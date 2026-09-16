@@ -1,0 +1,332 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0a;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  color: #d8cfc0;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+#ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui-root .interactive {
+  pointer-events: auto;
+}
+
+/* ---------- HUD ---------- */
+
+.hud-bar-frame {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 260px;
+  padding: 8px 10px;
+  background: rgba(10, 10, 10, 0.72);
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+}
+
+.hud-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #a89a82;
+  margin-bottom: 4px;
+}
+
+.hud-hp-outer {
+  width: 100%;
+  height: 14px;
+  background: #1a1414;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hud-hp-inner {
+  height: 100%;
+  background: linear-gradient(180deg, #a83030, #6b1414);
+  transition: width 0.15s ease-out;
+}
+
+.hud-skill {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #7fae86;
+}
+
+/* ---------- floating entity hp bars ---------- */
+
+.entity-hpbar {
+  position: absolute;
+  width: 46px;
+  height: 6px;
+  margin-left: -23px;
+  margin-top: -6px;
+  background: rgba(10, 10, 10, 0.75);
+  border: 1px solid #1a1a1a;
+  pointer-events: none;
+}
+
+.entity-hpbar-inner {
+  height: 100%;
+  background: #8b2020;
+}
+
+.entity-hpbar-inner.friendly {
+  background: #2d6b3d;
+}
+
+/* ---------- lobby action prompt ---------- */
+
+.interact-prompt {
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 10, 0.8);
+  border: 1px solid #4a4a4a;
+  padding: 8px 16px;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  border-radius: 2px;
+  display: none;
+}
+
+.interact-prompt.visible {
+  display: block;
+}
+
+/* ---------- lobby menu buttons ---------- */
+
+.lobby-menu {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+}
+
+.lobby-menu button {
+  pointer-events: auto;
+  background: rgba(20, 18, 16, 0.85);
+  border: 1px solid #4a4a4a;
+  color: #d8cfc0;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  padding: 10px 18px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.lobby-menu button:hover {
+  background: rgba(139, 32, 32, 0.35);
+  border-color: #8b2020;
+}
+
+/* ---------- panels (character / inventory / skills) ---------- */
+
+.panel-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.panel-overlay.hidden {
+  display: none;
+}
+
+.panel-box {
+  width: 420px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #201c18, #141210);
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  padding: 18px 20px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+.panel-title {
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: #c9b48b;
+  border-bottom: 1px solid #4a4a4a;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-title .close-btn {
+  cursor: pointer;
+  color: #8b2020;
+  font-size: 16px;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 4px;
+  font-size: 13px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.item-name {
+  color: #d8cfc0;
+}
+
+.item-name.equipped {
+  color: #7fae86;
+}
+
+.item-row button {
+  pointer-events: auto;
+  background: rgba(45, 107, 61, 0.25);
+  border: 1px solid #2d6b3d;
+  color: #cfe8d4;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.item-row button:hover {
+  background: rgba(45, 107, 61, 0.5);
+}
+
+.item-row button.unequip {
+  border-color: #8b2020;
+  background: rgba(139, 32, 32, 0.2);
+  color: #e8cfcf;
+}
+
+.empty-note {
+  font-size: 12px;
+  color: #756a5c;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ---------- death / message overlay ---------- */
+
+.message-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message-overlay.visible {
+  display: flex;
+}
+
+.message-overlay .big {
+  font-size: 42px;
+  color: #8b2020;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.message-overlay .small {
+  font-size: 14px;
+  color: #a89a82;
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid #2d6b3d;
+  color: #cfe8d4;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.toast.visible {
+  opacity: 1;
+}
+
+/* ---------- room banner ---------- */
+
+.room-banner {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #8b2020;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9);
+}
+
+.room-banner.visible {
+  opacity: 1;
+}
+
+.crosshair-hint {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  font-size: 11px;
+  color: #756a5c;
+  text-align: right;
+  line-height: 1.6;
+}
