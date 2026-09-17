@@ -17,6 +17,10 @@ export abstract class Entity {
   private flashMaterials: THREE.MeshStandardMaterial[] = [];
   private flashOriginal: THREE.Color[] = [];
 
+  private walkCycleTime = 0;
+  private lastBobX = NaN;
+  private lastBobZ = NaN;
+
   constructor(maxHp: number, halfWidth: number, halfDepth: number, speed: number) {
     this.maxHp = maxHp;
     this.hp = maxHp;
@@ -93,5 +97,24 @@ export abstract class Entity {
     const decay = Math.max(0, 1 - KNOCKBACK_DECAY * delta);
     this.knockback.x *= decay;
     this.knockback.z *= decay;
+  }
+
+  /** A small procedural bob while actually displacing, settling back to 0 when still. */
+  protected updateWalkBob(delta: number, amplitude = 0.06, frequency = 9) {
+    if (Number.isNaN(this.lastBobX)) {
+      this.lastBobX = this.group.position.x;
+      this.lastBobZ = this.group.position.z;
+      return;
+    }
+    const moved = Math.hypot(this.group.position.x - this.lastBobX, this.group.position.z - this.lastBobZ);
+    this.lastBobX = this.group.position.x;
+    this.lastBobZ = this.group.position.z;
+
+    if (moved > 0.002) {
+      this.walkCycleTime += delta * frequency;
+      this.group.position.y = Math.abs(Math.sin(this.walkCycleTime)) * amplitude;
+    } else {
+      this.group.position.y = THREE.MathUtils.damp(this.group.position.y, 0, 12, delta);
+    }
   }
 }

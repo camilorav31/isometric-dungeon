@@ -38,6 +38,8 @@ export interface RuntimeRoom {
   portalMesh?: THREE.Group;
   descendMesh?: THREE.Group;
   activated: boolean;
+  /** Whether the player has ever stood in this room — gates minimap visibility. */
+  visited: boolean;
 }
 
 export interface BuiltDungeon {
@@ -45,6 +47,7 @@ export interface BuiltDungeon {
   rooms: Map<string, RuntimeRoom>;
   staticWallAABBs: AABB[];
   traps: Trap[];
+  torchLights: THREE.PointLight[];
 }
 
 function randInt(min: number, max: number): number {
@@ -86,6 +89,7 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
   const rooms = new Map<string, RuntimeRoom>();
   const staticWallAABBs: AABB[] = [];
   const traps: Trap[] = [];
+  const torchLights: THREE.PointLight[] = [];
 
   for (const node of graph.rooms.values()) {
     const worldX = node.gridX * GRID_SPACING;
@@ -182,8 +186,9 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
     ];
     for (const [tx, tz] of torchOffsets) {
       const torch = createTorch();
-      torch.position.set(tx, 0, tz);
-      roomGroup.add(torch);
+      torch.group.position.set(tx, 0, tz);
+      roomGroup.add(torch.group);
+      torchLights.push(torch.light);
     }
 
     // Interior pillars: tactical cover/obstacles in combat and boss rooms.
@@ -218,6 +223,7 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
       enemies: [],
       treasureCollected: false,
       activated: node.type === 'start',
+      visited: node.type === 'start',
     };
 
     if (node.type === 'combat') {
@@ -260,5 +266,5 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
     rooms.set(node.id, runtimeRoom);
   }
 
-  return { group, rooms, staticWallAABBs, traps };
+  return { group, rooms, staticWallAABBs, traps, torchLights };
 }

@@ -19,6 +19,8 @@ export class UIManager {
   private hudAttackCdInner: HTMLDivElement;
   private hudSkillSlots: HTMLDivElement[];
   private damageNumberLayer: HTMLDivElement;
+  private minimapCanvas: HTMLCanvasElement;
+  private minimapCtx: CanvasRenderingContext2D;
 
   private interactPrompt: HTMLDivElement;
   private lobbyMenu: HTMLDivElement;
@@ -98,6 +100,14 @@ export class UIManager {
     this.soulsDisplay = document.createElement('div');
     this.soulsDisplay.className = 'souls-display';
     root.appendChild(this.soulsDisplay);
+
+    this.minimapCanvas = document.createElement('canvas');
+    this.minimapCanvas.className = 'minimap-canvas';
+    this.minimapCanvas.width = 150;
+    this.minimapCanvas.height = 150;
+    this.minimapCanvas.style.display = 'none';
+    root.appendChild(this.minimapCanvas);
+    this.minimapCtx = this.minimapCanvas.getContext('2d')!;
   }
 
   // ---------- souls (lobby currency badge) ----------
@@ -114,6 +124,39 @@ export class UIManager {
 
   showHUD(show: boolean) {
     this.hudFrame.style.display = show ? 'block' : 'none';
+    this.minimapCanvas.style.display = show ? 'block' : 'none';
+  }
+
+  // ---------- minimap ----------
+
+  updateMinimap(rooms: Array<{ gridX: number; gridY: number; type: string; visited: boolean; cleared: boolean; current: boolean }>) {
+    const ctx = this.minimapCtx;
+    const size = 150;
+    const cell = 22;
+    const cx = size / 2;
+    const cy = size / 2;
+    ctx.clearRect(0, 0, size, size);
+    for (const room of rooms) {
+      if (!room.visited) continue;
+      const x = cx + room.gridX * cell - (cell - 3) / 2;
+      const y = cy + room.gridY * cell - (cell - 3) / 2;
+      ctx.fillStyle =
+        room.type === 'boss'
+          ? '#8b2020'
+          : room.type === 'treasure'
+            ? '#d1a237'
+            : room.type === 'start'
+              ? '#2d6b3d'
+              : room.cleared
+                ? '#4a4a4a'
+                : '#6b6b6b';
+      ctx.fillRect(x, y, cell - 3, cell - 3);
+      if (room.current) {
+        ctx.strokeStyle = '#e8dcc4';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, cell - 3, cell - 3);
+      }
+    }
   }
 
   updateHUD(hp: number, maxHp: number, stamina: number, maxStamina: number, attackReadiness: number, skillReadiness: number[]) {

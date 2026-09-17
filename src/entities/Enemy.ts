@@ -17,7 +17,7 @@ export interface ShootRequest {
   damage: number;
 }
 
-const DEATH_HIDE_DELAY = 0.25;
+const DEATH_HIDE_DELAY = 0.4;
 export const ENEMY_SEPARATION_RADIUS = 0.9;
 const SOUL_VALUES: Record<EnemyType, number> = { melee: 5, ranged: 6, tank: 15, boss: 50 };
 
@@ -39,6 +39,7 @@ export class Enemy extends Entity {
   private preferredRange: number;
   private minRange: number;
   private attackCooldown: number;
+  private fallSign: number;
 
   constructor(type: EnemyType, roomId: string, difficultyMultiplier = 1) {
     const stats =
@@ -66,13 +67,19 @@ export class Enemy extends Entity {
 
     this.telegraphIndicator = createTelegraphIndicator();
     this.group.add(this.telegraphIndicator);
+
+    this.fallSign = Math.random() < 0.5 ? 1 : -1;
   }
 
   /** Flash + knockback decay + a brief delay before the corpse disappears. Call every frame. */
   update(delta: number) {
     this.updateFlash(delta);
-    if (!this.alive && this.group.visible) {
+    if (this.alive) {
+      this.updateWalkBob(delta);
+    } else if (this.group.visible) {
       this.deathHideTimer -= delta;
+      const progress = 1 - Math.max(0, this.deathHideTimer) / DEATH_HIDE_DELAY;
+      this.group.rotation.z = THREE.MathUtils.lerp(0, Math.PI / 2, Math.min(1, progress)) * this.fallSign;
       if (this.deathHideTimer <= 0) this.group.visible = false;
     }
   }

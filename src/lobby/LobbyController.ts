@@ -9,6 +9,7 @@ import { openCharacterPanel, openInventoryPanel, openSkillsPanel, openUpgradesPa
 import { PlayerState } from '../state/PlayerState';
 import { Direction } from '../dungeon/DungeonGenerator';
 import { updateWallFade } from '../scene/wallFade';
+import { updateTorchFlicker } from '../scene/torchFlicker';
 
 const ROOM_HALF = 11;
 const WALL_HEIGHT = 4;
@@ -18,6 +19,8 @@ export class LobbyController {
   private group: THREE.Group | null = null;
   private wallAABBs: AABB[] = [];
   private wallMeshesByDir: Partial<Record<Direction, THREE.Mesh[]>> = {};
+  private torchLights: THREE.PointLight[] = [];
+  private elapsed = 0;
   private portalPos = new THREE.Vector3(0, 0, -8);
   private nearPortal = false;
 
@@ -69,10 +72,12 @@ export class LobbyController {
       [-ROOM_HALF + 0.8, ROOM_HALF - 0.8],
       [ROOM_HALF - 0.8, ROOM_HALF - 0.8],
     ];
+    this.torchLights = [];
     for (const [x, z] of torchPositions) {
       const torch = createTorch();
-      torch.position.set(x, 0, z);
-      group.add(torch);
+      torch.group.position.set(x, 0, z);
+      group.add(torch.group);
+      this.torchLights.push(torch.light);
     }
 
     const portal = createPortal(PALETTE.loot);
@@ -105,6 +110,9 @@ export class LobbyController {
   }
 
   update(delta: number) {
+    this.elapsed += delta;
+    updateTorchFlicker(this.torchLights, this.elapsed);
+
     const axis = this.input.getMovementAxis();
     if (axis.x !== 0 || axis.z !== 0) {
       const dir = this.camera.computeMoveDirection(axis.x, axis.z);

@@ -93,7 +93,12 @@ export function createDoorBlocker(width: number, height: number, depth: number):
   return mesh;
 }
 
-export function createTorch(): THREE.Group {
+export interface TorchMesh {
+  group: THREE.Group;
+  light: THREE.PointLight;
+}
+
+export function createTorch(): TorchMesh {
   const group = new THREE.Group();
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 6), stdMat(PALETTE.wood));
   pole.position.y = 0.6;
@@ -104,7 +109,14 @@ export function createTorch(): THREE.Group {
   );
   flame.position.y = 1.35;
   group.add(pole, flame);
-  return group;
+
+  // No shadow casting — only the moon's directional light casts shadows, so a
+  // handful of these stay cheap even with a dozen torches in view.
+  const light = new THREE.PointLight('#ff9142', 1.4, 7, 2);
+  light.position.y = 1.4;
+  group.add(light);
+
+  return { group, light };
 }
 
 export function createChest(): THREE.Group {

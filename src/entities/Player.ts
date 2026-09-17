@@ -168,6 +168,7 @@ export class Player extends Entity {
 
   update(delta: number) {
     this.updateFlash(delta);
+    if (!this.isRolling) this.updateWalkBob(delta);
 
     if (this.attackCooldownTimer > 0) this.attackCooldownTimer -= delta;
     if (this.attackAnimTimer > 0) {

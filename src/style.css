@@ -427,6 +427,16 @@ body {
   display: none;
 }
 
+.minimap-canvas {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(10, 10, 10, 0.72);
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  display: none;
+}
+
 .crosshair-hint {
   position: absolute;
   bottom: 16px;

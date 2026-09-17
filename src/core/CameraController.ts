@@ -15,6 +15,8 @@ export class CameraController {
   private targetYaw = Math.PI / 4;
   private zoom = 16;
   private aspect: number;
+  private shakeTime = 0;
+  private shakeMagnitude = 0;
 
   constructor(aspect: number) {
     this.aspect = aspect;
@@ -81,7 +83,13 @@ export class CameraController {
     return { x: x / len, z: z / len };
   }
 
-  update(target: THREE.Vector3) {
+  /** Punchy feedback for hits — a brief random jolt layered on top of the follow position. */
+  shake(magnitude: number, duration: number) {
+    this.shakeMagnitude = Math.max(this.shakeMagnitude, magnitude);
+    this.shakeTime = Math.max(this.shakeTime, duration);
+  }
+
+  update(target: THREE.Vector3, delta = 0) {
     const offset = new THREE.Vector3(
       Math.sin(this.yaw) * Math.cos(PITCH),
       Math.sin(PITCH),
@@ -89,5 +97,14 @@ export class CameraController {
     ).multiplyScalar(DISTANCE);
     this.camera.position.copy(target).add(offset);
     this.camera.lookAt(target);
+
+    if (this.shakeTime > 0) {
+      this.shakeTime -= delta;
+      const s = this.shakeMagnitude;
+      this.camera.position.x += (Math.random() - 0.5) * s;
+      this.camera.position.y += (Math.random() - 0.5) * s * 0.5;
+      this.camera.position.z += (Math.random() - 0.5) * s;
+      if (this.shakeTime <= 0) this.shakeMagnitude = 0;
+    }
   }
 }

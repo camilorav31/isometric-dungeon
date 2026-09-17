@@ -139,7 +139,7 @@ export class Game {
       }
     }
 
-    this.camera.update(this.player.group.position);
+    this.camera.update(this.player.group.position, delta);
 
     this.moonLight.position.copy(this.player.group.position).add(LIGHT_OFFSET);
     this.moonLight.target.position.copy(this.player.group.position);

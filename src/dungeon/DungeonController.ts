@@ -12,6 +12,17 @@ import { UIManager } from '../ui/UIManager';
 import { AABB, intersects, makeAABB, circleIntersects, attemptMove } from '../utils/collision';
 import { rollLootItem, RARITY_LABEL, SKILL_POOL } from '../state/PlayerState';
 import { updateWallFade } from '../scene/wallFade';
+import { updateTorchFlicker } from '../scene/torchFlicker';
+import { ParticleBurst } from '../scene/particles';
+
+interface MinimapRoomData {
+  gridX: number;
+  gridY: number;
+  type: string;
+  visited: boolean;
+  cleared: boolean;
+  current: boolean;
+}
 
 // Combat rooms only seal/activate once the player has cleared this margin past
 // the doorway; otherwise the door blocker spawns right on top of the player.
@@ -56,6 +67,8 @@ export class DungeonController {
 
   private built: BuiltDungeon | null = null;
   private projectiles: Projectile[] = [];
+  private particleBursts: ParticleBurst[] = [];
+  private elapsed = 0;
   private nearPortal = false;
   private nearDescend = false;
   private onExitToLobby: (won: boolean) => void;
@@ -109,6 +122,15 @@ export class DungeonController {
     this.scene.remove(this.built.group);
     this.built = null;
     this.projectiles = [];
+    for (const burst of this.particleBursts) burst.dispose();
+    this.particleBursts = [];
+  }
+
+  private spawnBurst(position: THREE.Vector3, color: string, count = 8, speed = 3) {
+    if (!this.built) return;
+    const burst = new ParticleBurst(position, color, count, speed);
+    this.built.group.add(burst.points);
+    this.particleBursts.push(burst);
   }
 
   private getAllObstacles(): AABB[] {
@@ -151,6 +173,9 @@ export class DungeonController {
 
   update(delta: number) {
     if (!this.built) return;
+
+    this.elapsed += delta;
+    updateTorchFlicker(this.built.torchLights, this.elapsed);
 
     this.player.update(delta);
     for (let i = 0; i < this.skillCooldowns.length; i++) {
@@ -198,10 +223,15 @@ export class DungeonController {
             const headPos = new THREE.Vector3();
             enemy.getHeadWorldPosition(headPos);
             this.ui.spawnDamageNumber(headPos, this.camera.camera, attack.damage, 'enemy');
+            this.camera.shake(0.12, 0.1);
             if (!enemy.alive && !enemy.soulsAwarded) {
               enemy.soulsAwarded = true;
               this.player.playerState.souls += enemy.soulValue;
               this.ui.showToast(`+${enemy.soulValue} almas`);
+              this.spawnBurst(headPos, '#ffffff', 14, 4);
+              this.camera.shake(0.2, 0.14);
+            } else {
+              this.spawnBurst(headPos, '#ffd699', 8, 3);
             }
           }
         }
@@ -217,6 +247,7 @@ export class DungeonController {
     // Only trigger once the player has stepped well clear of the doorway, so the
     // door blocker never spawns on top of them (which used to trap/hide the player).
     const currentRoom = this.findRoomContaining(this.player.position.x, this.player.position.z);
+    if (currentRoom) currentRoom.visited = true;
     if (
       currentRoom &&
       isCombatRoomType(currentRoom.node.type) &&
@@ -273,6 +304,8 @@ export class DungeonController {
             const headPos = new THREE.Vector3();
             this.player.getHeadWorldPosition(headPos);
             this.ui.spawnDamageNumber(headPos, this.camera.camera, enemy.damage, 'player');
+            this.spawnBurst(headPos, '#ff4d4d', 10, 3.5);
+            this.camera.shake(0.22, 0.16);
           }
         }
         if (result.shoot) {
@@ -312,6 +345,8 @@ export class DungeonController {
           const headPos = new THREE.Vector3();
           this.player.getHeadWorldPosition(headPos);
           this.ui.spawnDamageNumber(headPos, this.camera.camera, TRAP_DAMAGE, 'player');
+          this.spawnBurst(headPos, '#ff4d4d', 10, 3.5);
+          this.camera.shake(0.22, 0.16);
         }
       }
     }
@@ -330,6 +365,8 @@ export class DungeonController {
           const headPos = new THREE.Vector3();
           this.player.getHeadWorldPosition(headPos);
           this.ui.spawnDamageNumber(headPos, this.camera.camera, proj.damage, 'player');
+          this.spawnBurst(headPos, '#ff4d4d', 10, 3.5);
+          this.camera.shake(0.22, 0.16);
         }
         proj.alive = false;
         continue;
@@ -344,6 +381,15 @@ export class DungeonController {
       if (!this.projectiles[i].alive) {
         this.built.group.remove(this.projectiles[i].group);
         this.projectiles.splice(i, 1);
+      }
+    }
+
+    // ---- particle bursts (hit sparks / death poofs) ----
+    for (let i = this.particleBursts.length - 1; i >= 0; i--) {
+      if (!this.particleBursts[i].update(delta)) {
+        this.built.group.remove(this.particleBursts[i].points);
+        this.particleBursts[i].dispose();
+        this.particleBursts.splice(i, 1);
       }
     }
 
@@ -402,6 +448,16 @@ export class DungeonController {
       this.onPlayerDied();
       return;
     }
+
+    const minimapRooms: MinimapRoomData[] = [...this.built.rooms.values()].map((room) => ({
+      gridX: room.node.gridX,
+      gridY: room.node.gridY,
+      type: room.node.type,
+      visited: room.visited,
+      cleared: room.node.cleared,
+      current: room === currentRoom,
+    }));
+    this.ui.updateMinimap(minimapRooms);
 
     const skillReadiness = SKILL_POOL.map(
       (skill, i) => 1 - THREE.MathUtils.clamp(this.skillCooldowns[i] / skill.cooldown, 0, 1),
