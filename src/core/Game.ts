@@ -27,6 +27,7 @@ export class Game {
   private dungeon: DungeonController;
   private mode: Mode = 'LOBBY';
   private paused = false;
+  private currentFloor = 1;
 
   private moonLight!: THREE.DirectionalLight;
 
@@ -61,6 +62,7 @@ export class Game {
       this.input,
       (won) => this.exitDungeon(won),
       () => this.onPlayerDied(),
+      () => this.descendToNextFloor(),
     );
 
     window.addEventListener('resize', this.onResize);
@@ -76,6 +78,7 @@ export class Game {
 
   private enterLobby(initial = false) {
     this.mode = 'LOBBY';
+    this.currentFloor = 1;
     this.playerState.resetForLobby();
     this.player.syncStatsFromState();
     this.player.group.visible = true;
@@ -87,10 +90,18 @@ export class Game {
 
   private enterDungeon() {
     this.mode = 'DUNGEON';
+    this.currentFloor = 1;
     this.lobby.teardown();
-    const spawn = this.dungeon.generate();
+    const spawn = this.dungeon.generate(this.currentFloor);
     this.player.group.position.copy(spawn);
     this.ui.showHUD(true);
+  }
+
+  /** Presses onward from the boss room's stairway instead of cashing out at the lobby. */
+  private descendToNextFloor() {
+    this.currentFloor += 1;
+    const spawn = this.dungeon.generate(this.currentFloor);
+    this.player.group.position.copy(spawn);
   }
 
   private exitDungeon(won: boolean) {

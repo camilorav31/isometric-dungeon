@@ -117,6 +117,11 @@ export function generateDungeonGraph(): DungeonGraph {
     treasureRoom.type = 'treasure';
   }
 
+  // Add a few extra connections between plain combat rooms so the dungeon isn't
+  // a strict tree — this gives alternate routes without touching the treasure/
+  // boss rooms' single-entrance framing (computed above, before these are added).
+  addLoopConnections(rooms);
+
   for (const room of rooms.values()) {
     if (room.type === 'combat') {
       room.enemyCount = randInt(1, 4);
@@ -126,6 +131,25 @@ export function generateDungeonGraph(): DungeonGraph {
   }
 
   return { rooms, startRoomId: startId };
+}
+
+const LOOP_CHANCE = 0.22;
+
+function addLoopConnections(rooms: Map<string, RoomNode>) {
+  for (const room of rooms.values()) {
+    if (room.type === 'treasure' || room.type === 'boss') continue;
+    for (const dir of DIRECTIONS) {
+      if (room.doors[dir]) continue;
+      const offset = DIR_OFFSET[dir];
+      const neighbor = rooms.get(key(room.gridX + offset.dx, room.gridY + offset.dy));
+      if (!neighbor || neighbor.type === 'treasure' || neighbor.type === 'boss') continue;
+      if (neighbor.doors[OPPOSITE[dir]]) continue;
+      if (Math.random() < LOOP_CHANCE) {
+        room.doors[dir] = neighbor.id;
+        neighbor.doors[OPPOSITE[dir]] = room.id;
+      }
+    }
+  }
 }
 
 function bfsDistances(rooms: Map<string, RoomNode>, startId: string): Map<string, number> {

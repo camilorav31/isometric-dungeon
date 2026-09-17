@@ -40,6 +40,53 @@ export function createWallSegment(
   return mesh;
 }
 
+export function createPillar(height: number): THREE.Group {
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, height, 8), stdMat(PALETTE.stoneLight));
+  shaft.position.y = height / 2;
+  shaft.castShadow = true;
+  shaft.receiveShadow = true;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.65, 0.25, 8), stdMat(PALETTE.stoneDark));
+  cap.position.y = height + 0.1;
+  cap.castShadow = true;
+  group.add(shaft, cap);
+  return group;
+}
+
+export interface SpikeTrapMesh {
+  group: THREE.Group;
+  spikesGroup: THREE.Group;
+}
+
+export function createSpikeTrap(): SpikeTrapMesh {
+  const group = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), stdMat('#2f1414', { roughness: 1 }));
+  plate.position.y = 0.05;
+  plate.receiveShadow = true;
+  group.add(plate);
+
+  const spikesGroup = new THREE.Group();
+  const spikeMat = new THREE.MeshStandardMaterial({ color: '#8a8a8a', metalness: 0.5, roughness: 0.4 });
+  const offsets: [number, number][] = [
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [-0.5, 0.5],
+    [0.5, 0.5],
+    [0, 0],
+  ];
+  for (const [x, z] of offsets) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.6, 5), spikeMat);
+    spike.position.set(x, 0.3, z);
+    spike.castShadow = true;
+    spikesGroup.add(spike);
+  }
+  spikesGroup.scale.y = 0.05;
+  spikesGroup.visible = false;
+  group.add(spikesGroup);
+
+  return { group, spikesGroup };
+}
+
 export function createDoorBlocker(width: number, height: number, depth: number): THREE.Mesh {
   const mesh = createWallSegment(width, height, depth, PALETTE.danger);
   (mesh.material as THREE.MeshStandardMaterial).emissive = new THREE.Color(0x330606);

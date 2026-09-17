@@ -40,14 +40,19 @@ export class Enemy extends Entity {
   private minRange: number;
   private attackCooldown: number;
 
-  constructor(type: EnemyType, roomId: string) {
+  constructor(type: EnemyType, roomId: string, difficultyMultiplier = 1) {
     const stats =
       type === 'melee' ? MELEE_STATS : type === 'ranged' ? RANGED_STATS : type === 'tank' ? TANK_STATS : BOSS_STATS;
-    super(stats.hp, type === 'boss' ? 0.6 : 0.4, type === 'boss' ? 0.45 : 0.3, stats.speed);
+    super(
+      Math.round(stats.hp * difficultyMultiplier),
+      type === 'boss' ? 0.6 : 0.4,
+      type === 'boss' ? 0.45 : 0.3,
+      stats.speed,
+    );
     this.type = type;
     this.roomId = roomId;
-    this.soulValue = SOUL_VALUES[type];
-    this.damage = stats.damage;
+    this.soulValue = Math.round(SOUL_VALUES[type] * difficultyMultiplier);
+    this.damage = Math.round(stats.damage * difficultyMultiplier);
     this.aggroRange = stats.aggroRange;
     this.attackRange = type === 'ranged' ? 0 : stats.attackRange;
     this.attackCooldown = stats.attackCooldown;

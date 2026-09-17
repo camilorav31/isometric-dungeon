@@ -4,6 +4,7 @@ import { AABB, makeAABB } from '../utils/collision';
 import {
   createDoorBlocker,
   createFloor,
+  createPillar,
   createPortal,
   createTorch,
   createTreasureItem,
@@ -11,6 +12,7 @@ import {
   PALETTE,
 } from '../utils/geometryFactory';
 import { Enemy, EnemyType } from '../entities/Enemy';
+import { Trap } from './Trap';
 
 export const ROOM_SIZE = 16;
 export const WALL_THICKNESS = 1;
@@ -34,6 +36,7 @@ export interface RuntimeRoom {
   treasureMesh?: THREE.Group;
   treasureCollected: boolean;
   portalMesh?: THREE.Group;
+  descendMesh?: THREE.Group;
   activated: boolean;
 }
 
@@ -41,6 +44,7 @@ export interface BuiltDungeon {
   group: THREE.Group;
   rooms: Map<string, RuntimeRoom>;
   staticWallAABBs: AABB[];
+  traps: Trap[];
 }
 
 function randInt(min: number, max: number): number {
@@ -64,10 +68,24 @@ export function getBlockerAABB(room: RuntimeRoom, dir: Direction): AABB {
   return makeAABB(room.worldX + wallX, room.worldZ, WALL_THICKNESS / 2, DOOR_WIDTH / 2);
 }
 
-export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
+const PILLAR_OFFSETS: [number, number][] = [
+  [-4, -4],
+  [4, -4],
+  [-4, 4],
+  [4, 4],
+  [-4, 0],
+  [4, 0],
+];
+
+function shuffled<T>(items: T[]): T[] {
+  return [...items].sort(() => Math.random() - 0.5);
+}
+
+export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): BuiltDungeon {
   const group = new THREE.Group();
   const rooms = new Map<string, RuntimeRoom>();
   const staticWallAABBs: AABB[] = [];
+  const traps: Trap[] = [];
 
   for (const node of graph.rooms.values()) {
     const worldX = node.gridX * GRID_SPACING;
@@ -168,6 +186,27 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
       roomGroup.add(torch);
     }
 
+    // Interior pillars: tactical cover/obstacles in combat and boss rooms.
+    const wantsPillars = node.type === 'boss' || (node.type === 'combat' && Math.random() < 0.5);
+    if (wantsPillars) {
+      const count = node.type === 'boss' ? 4 : randInt(2, 3);
+      for (const [px, pz] of shuffled(PILLAR_OFFSETS).slice(0, count)) {
+        const pillar = createPillar(WALL_HEIGHT);
+        pillar.position.set(px, 0, pz);
+        roomGroup.add(pillar);
+        staticWallAABBs.push(makeAABB(worldX + px, worldZ + pz, 0.65, 0.65));
+      }
+    }
+
+    // A spike trap adds ambient danger independent of the room's enemies (skip
+    // rooms that already got pillars, so the two obstacle types never overlap).
+    if (node.type === 'combat' && !wantsPillars && Math.random() < 0.35) {
+      const [tx, tz] = PILLAR_OFFSETS[randInt(0, PILLAR_OFFSETS.length - 1)];
+      const trap = new Trap(worldX + tx, worldZ + tz);
+      group.add(trap.group);
+      traps.push(trap);
+    }
+
     const runtimeRoom: RuntimeRoom = {
       node,
       worldX,
@@ -183,7 +222,7 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
 
     if (node.type === 'combat') {
       for (let i = 0; i < node.enemyCount; i++) {
-        const enemy = new Enemy(pickEnemyType(), node.id);
+        const enemy = new Enemy(pickEnemyType(), node.id, difficultyMultiplier);
         const angle = Math.random() * Math.PI * 2;
         const radius = randInt(2, Math.floor(HALF_ROOM - 3));
         enemy.group.position.set(worldX + Math.cos(angle) * radius, 0, worldZ + Math.sin(angle) * radius);
@@ -192,11 +231,19 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
         group.add(enemy.group);
       }
     } else if (node.type === 'boss') {
-      const boss = new Enemy('boss', node.id);
+      const boss = new Enemy('boss', node.id, difficultyMultiplier);
       boss.group.position.set(worldX, 0, worldZ);
       boss.group.visible = false;
       runtimeRoom.enemies.push(boss);
       group.add(boss.group);
+
+      // Revealed once the boss falls: a stairway deeper, offered alongside the
+      // safer choice of walking back to the start room's lobby portal.
+      const descend = createPortal('#c9682a');
+      descend.position.set(worldX, 0, worldZ + 4);
+      descend.visible = false;
+      group.add(descend);
+      runtimeRoom.descendMesh = descend;
     } else if (node.type === 'treasure') {
       const treasure = createTreasureItem();
       treasure.position.set(worldX, 0, worldZ);
@@ -213,5 +260,5 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
     rooms.set(node.id, runtimeRoom);
   }
 
-  return { group, rooms, staticWallAABBs };
+  return { group, rooms, staticWallAABBs, traps };
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateDungeonGraph } from './DungeonGenerator';
 import { buildDungeon, BuiltDungeon, RuntimeRoom, getBlockerAABB } from './DungeonBuilder';
+import { TRAP_DAMAGE } from './Trap';
 import { DIRECTIONS } from './DungeonGenerator';
 import { Player } from '../entities/Player';
 import { Enemy, ENEMY_SEPARATION_RADIUS } from '../entities/Enemy';
@@ -23,6 +24,7 @@ function isCombatRoomType(type: string): boolean {
 const PLAYER_HIT_KNOCKBACK = 5;
 const ENEMY_HIT_PLAYER_KNOCKBACK = 4;
 const PROJECTILE_HIT_KNOCKBACK = 2.5;
+const DIFFICULTY_PER_FLOOR = 0.18;
 
 function separateEnemies(enemies: Enemy[], obstacles: AABB[]) {
   for (let i = 0; i < enemies.length; i++) {
@@ -55,8 +57,10 @@ export class DungeonController {
   private built: BuiltDungeon | null = null;
   private projectiles: Projectile[] = [];
   private nearPortal = false;
+  private nearDescend = false;
   private onExitToLobby: (won: boolean) => void;
   private onPlayerDied: () => void;
+  private onDescend: () => void;
 
   constructor(
     scene: THREE.Scene,
@@ -66,6 +70,7 @@ export class DungeonController {
     input: InputManager,
     onExitToLobby: (won: boolean) => void,
     onPlayerDied: () => void,
+    onDescend: () => void,
   ) {
     this.scene = scene;
     this.player = player;
@@ -74,12 +79,14 @@ export class DungeonController {
     this.input = input;
     this.onExitToLobby = onExitToLobby;
     this.onPlayerDied = onPlayerDied;
+    this.onDescend = onDescend;
   }
 
-  generate(): THREE.Vector3 {
+  generate(floor = 1): THREE.Vector3 {
     this.dispose();
     const graph = generateDungeonGraph();
-    this.built = buildDungeon(graph);
+    const difficultyMultiplier = 1 + (floor - 1) * DIFFICULTY_PER_FLOOR;
+    this.built = buildDungeon(graph, difficultyMultiplier);
     this.scene.add(this.built.group);
 
     for (const room of this.built.rooms.values()) {
@@ -88,7 +95,7 @@ export class DungeonController {
       }
     }
 
-    this.ui.showRoomBanner('Has entrado a la mazmorra');
+    this.ui.showRoomBanner(floor > 1 ? `Piso ${floor}` : 'Has entrado a la mazmorra');
     return new THREE.Vector3(0, 0, 3);
   }
 
@@ -287,7 +294,25 @@ export class DungeonController {
       if (!anyAlive && !room.node.cleared) {
         room.node.cleared = true;
         this.unsealRoom(room);
-        this.ui.showToast('Sala despejada');
+        if (room.node.type === 'boss') {
+          if (room.descendMesh) room.descendMesh.visible = true;
+          this.ui.showToast('¡El jefe ha caído! Se revela una escalera hacia lo profundo.');
+        } else {
+          this.ui.showToast('Sala despejada');
+        }
+      }
+    }
+
+    // ---- environmental traps (independent of room activation) ----
+    for (const trap of this.built.traps) {
+      trap.update(delta);
+      trap.animate();
+      if (trap.tryDamagePlayer(this.player.position.x, this.player.position.z)) {
+        if (this.player.takeDamage(TRAP_DAMAGE)) {
+          const headPos = new THREE.Vector3();
+          this.player.getHeadWorldPosition(headPos);
+          this.ui.spawnDamageNumber(headPos, this.camera.camera, TRAP_DAMAGE, 'player');
+        }
       }
     }
 
@@ -337,20 +362,39 @@ export class DungeonController {
       }
     }
 
-    // ---- portal interact prompt ----
+    // ---- portal / descend-stairway interact prompts ----
     const startRoom = [...this.built.rooms.values()].find((r) => r.node.type === 'start');
     this.nearPortal = false;
     if (startRoom && startRoom.portalMesh) {
       const dx = startRoom.portalMesh.position.x - this.player.position.x;
       const dz = startRoom.portalMesh.position.z - this.player.position.z;
-      if (Math.hypot(dx, dz) < 2.6) {
-        this.nearPortal = true;
-      }
+      if (Math.hypot(dx, dz) < 2.6) this.nearPortal = true;
     }
-    this.ui.setInteractPrompt(this.nearPortal ? '[E] Volver al Lobby' : null);
-    if (this.nearPortal && this.input.wasJustPressed('KeyE')) {
-      this.onExitToLobby(true);
-      return;
+
+    const bossRoom = [...this.built.rooms.values()].find((r) => r.node.type === 'boss');
+    this.nearDescend = false;
+    if (bossRoom?.node.cleared && bossRoom.descendMesh) {
+      const dx = bossRoom.descendMesh.position.x - this.player.position.x;
+      const dz = bossRoom.descendMesh.position.z - this.player.position.z;
+      if (Math.hypot(dx, dz) < 2.6) this.nearDescend = true;
+    }
+
+    if (this.nearPortal) {
+      this.ui.setInteractPrompt('[E] Volver al Lobby');
+    } else if (this.nearDescend) {
+      this.ui.setInteractPrompt('[E] Descender más profundo');
+    } else {
+      this.ui.setInteractPrompt(null);
+    }
+
+    if (this.input.wasJustPressed('KeyE')) {
+      if (this.nearPortal) {
+        this.onExitToLobby(true);
+        return;
+      } else if (this.nearDescend) {
+        this.onDescend();
+        return;
+      }
     }
 
     // ---- death check ----
