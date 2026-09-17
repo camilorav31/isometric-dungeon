@@ -125,6 +125,22 @@ export function createTreasureItem(): THREE.Group {
   return group;
 }
 
+export function createTelegraphIndicator(): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.ConeGeometry(0.18, 0.32, 4),
+    new THREE.MeshStandardMaterial({
+      color: '#ff3b1f',
+      emissive: new THREE.Color('#ff3b1f'),
+      emissiveIntensity: 1.4,
+      roughness: 0.4,
+    }),
+  );
+  mesh.position.y = 2.3;
+  mesh.rotation.y = Math.PI / 4;
+  mesh.visible = false;
+  return mesh;
+}
+
 export function createCharacterMesh(bodyColor: string, accentColor: string): THREE.Group {
   const group = new THREE.Group();
 

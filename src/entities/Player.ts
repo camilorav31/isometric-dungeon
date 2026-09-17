@@ -14,6 +14,15 @@ const SWORD_SWING_END = 0.9;
 const INVULN_DURATION = 0.5;
 const INVULN_BLINK_RATE = 16; // blink cycles/sec while invulnerable
 
+export const STAMINA_MAX = 100;
+const STAMINA_REGEN_RATE = 30; // per second
+const STAMINA_REGEN_DELAY = 0.45; // pause after spending before regen resumes
+const ATTACK_STAMINA_COST = 12;
+const ROLL_STAMINA_COST = 30;
+const ROLL_DURATION = 0.32;
+const ROLL_SPEED = 13;
+const ROLL_TILT = -0.5;
+
 export class Player extends Entity {
   facingAngle = Math.PI; // radians, 0 = +Z
   private attackCooldownTimer = 0;
@@ -24,6 +33,11 @@ export class Player extends Entity {
   private nextAttackDamageMultiplier = 1;
   private swordPivot: THREE.Group;
   private invulnTimer = 0;
+  stamina = STAMINA_MAX;
+  private staminaRegenDelayTimer = 0;
+  private rollTimer = 0;
+  private rollDirX = 0;
+  private rollDirZ = 0;
 
   constructor(public playerState: PlayerState) {
     super(playerState.maxHp, 0.4, 0.3, playerState.speed);
@@ -73,6 +87,43 @@ export class Player extends Entity {
     return 1 - Math.max(0, this.attackCooldownTimer) / ATTACK_COOLDOWN;
   }
 
+  get staminaRatio(): number {
+    return this.stamina / STAMINA_MAX;
+  }
+
+  get isRolling(): boolean {
+    return this.rollTimer > 0;
+  }
+
+  /** Unit-direction * roll speed; multiply by delta to get this frame's displacement. */
+  get rollVelocity(): { x: number; z: number } {
+    return { x: this.rollDirX * ROLL_SPEED, z: this.rollDirZ * ROLL_SPEED };
+  }
+
+  private spendStamina(amount: number) {
+    this.stamina = Math.max(0, this.stamina - amount);
+    this.staminaRegenDelayTimer = STAMINA_REGEN_DELAY;
+  }
+
+  /** Dashes in (dirX, dirZ) — or the current facing if not moving — with i-frames. */
+  tryRoll(dirX: number, dirZ: number): boolean {
+    if (this.rollTimer > 0 || this.stamina < ROLL_STAMINA_COST) return false;
+    let dx = dirX;
+    let dz = dirZ;
+    if (Math.hypot(dx, dz) < 0.001) {
+      dx = Math.sin(this.facingAngle);
+      dz = Math.cos(this.facingAngle);
+    }
+    const len = Math.hypot(dx, dz) || 1;
+    this.rollDirX = dx / len;
+    this.rollDirZ = dz / len;
+    this.rollTimer = ROLL_DURATION;
+    this.spendStamina(ROLL_STAMINA_COST);
+    this.invulnTimer = Math.max(this.invulnTimer, ROLL_DURATION);
+    this.setFacingFromMovement(this.rollDirX, this.rollDirZ);
+    return true;
+  }
+
   /** Returns false (no-op) if the hit was absorbed by post-hit invulnerability. */
   takeDamage(amount: number): boolean {
     if (this.invulnTimer > 0) return false;
@@ -112,6 +163,20 @@ export class Player extends Entity {
       this.group.visible = true;
     }
 
+    if (this.rollTimer > 0) {
+      this.rollTimer = Math.max(0, this.rollTimer - delta);
+      const progress = 1 - this.rollTimer / ROLL_DURATION;
+      this.group.rotation.x = Math.sin(progress * Math.PI) * ROLL_TILT;
+    } else {
+      this.group.rotation.x = 0;
+    }
+
+    if (this.staminaRegenDelayTimer > 0) {
+      this.staminaRegenDelayTimer -= delta;
+    } else if (this.stamina < STAMINA_MAX) {
+      this.stamina = Math.min(STAMINA_MAX, this.stamina + STAMINA_REGEN_RATE * delta);
+    }
+
     if (this.isAttacking) {
       const progress = 1 - this.attackAnimTimer / ATTACK_ANIM_DURATION;
       this.swordPivot.rotation.x = THREE.MathUtils.lerp(SWORD_SWING_START, SWORD_SWING_END, progress);
@@ -121,7 +186,7 @@ export class Player extends Entity {
   }
 
   canAttack(): boolean {
-    return this.attackCooldownTimer <= 0;
+    return this.attackCooldownTimer <= 0 && this.rollTimer <= 0 && this.stamina >= ATTACK_STAMINA_COST;
   }
 
   /** Triggers the attack animation/cooldown and returns the damage to apply, plus range/facing info. */
@@ -130,6 +195,7 @@ export class Player extends Entity {
     this.attackCooldownTimer = ATTACK_COOLDOWN;
     this.isAttacking = true;
     this.attackAnimTimer = ATTACK_ANIM_DURATION;
+    this.spendStamina(ATTACK_STAMINA_COST);
     const damage = this.playerState.damage * this.nextAttackDamageMultiplier;
     this.nextAttackDamageMultiplier = 1;
     return { damage, range: PLAYER_ATTACK_RANGE, facingAngle: this.facingAngle };

@@ -48,7 +48,10 @@ function randInt(min: number, max: number): number {
 }
 
 function pickEnemyType(): EnemyType {
-  return Math.random() < 0.5 ? 'melee' : 'ranged';
+  const roll = Math.random();
+  if (roll < 0.45) return 'melee';
+  if (roll < 0.8) return 'ranged';
+  return 'tank';
 }
 
 export function getBlockerAABB(room: RuntimeRoom, dir: Direction): AABB {
@@ -72,7 +75,7 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
     const roomGroup = new THREE.Group();
     roomGroup.position.set(worldX, 0, worldZ);
 
-    const floorColor = node.type === 'treasure' ? '#3a3428' : PALETTE.stoneDark;
+    const floorColor = node.type === 'treasure' ? '#3a3428' : node.type === 'boss' ? '#3a1f1f' : PALETTE.stoneDark;
     const floor = createFloor(ROOM_SIZE + 0.4, ROOM_SIZE + 0.4, floorColor);
     roomGroup.add(floor);
 
@@ -188,6 +191,12 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
         runtimeRoom.enemies.push(enemy);
         group.add(enemy.group);
       }
+    } else if (node.type === 'boss') {
+      const boss = new Enemy('boss', node.id);
+      boss.group.position.set(worldX, 0, worldZ);
+      boss.group.visible = false;
+      runtimeRoom.enemies.push(boss);
+      group.add(boss.group);
     } else if (node.type === 'treasure') {
       const treasure = createTreasureItem();
       treasure.position.set(worldX, 0, worldZ);

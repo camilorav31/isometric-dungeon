@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Entity } from '../entities/Entity';
+import { SKILL_POOL } from '../state/PlayerState';
 
 interface TrackedBar {
   entity: Entity;
@@ -14,9 +15,9 @@ export class UIManager {
 
   private hudFrame: HTMLDivElement;
   private hudHpInner: HTMLDivElement;
-  private hudSkillLabel: HTMLDivElement;
+  private hudStaminaInner: HTMLDivElement;
   private hudAttackCdInner: HTMLDivElement;
-  private hudSkillCdInner: HTMLDivElement;
+  private hudSkillSlots: HTMLDivElement[];
   private damageNumberLayer: HTMLDivElement;
 
   private interactPrompt: HTMLDivElement;
@@ -37,21 +38,30 @@ export class UIManager {
     this.damageNumberLayer = document.createElement('div');
     root.appendChild(this.damageNumberLayer);
 
+    const skillSlotsHtml = SKILL_POOL.map(
+      (skill, i) => `
+        <div class="hud-skill-slot">
+          <div class="hud-skill-slot-label">[${i + 1}] ${skill.name}</div>
+          <div class="cd-overlay" id="hud-skill-cd-${i}"></div>
+        </div>`,
+    ).join('');
+
     this.hudFrame = document.createElement('div');
     this.hudFrame.className = 'hud-bar-frame';
     this.hudFrame.innerHTML = `
       <div class="hud-label">Vida</div>
       <div class="hud-hp-outer"><div class="hud-hp-inner" id="hud-hp-inner"></div></div>
+      <div class="hud-label" style="margin-top:8px;">Estamina</div>
+      <div class="hud-hp-outer"><div class="hud-stamina-inner" id="hud-stamina-inner"></div></div>
       <div class="hud-label" style="margin-top:8px;">Ataque</div>
       <div class="hud-cd-outer"><div class="hud-cd-inner" id="hud-attack-cd"></div></div>
-      <div class="hud-skill" id="hud-skill"></div>
-      <div class="hud-cd-outer"><div class="hud-cd-inner" id="hud-skill-cd"></div></div>
+      <div class="hud-skill-row">${skillSlotsHtml}</div>
     `;
     root.appendChild(this.hudFrame);
     this.hudHpInner = this.hudFrame.querySelector('#hud-hp-inner')!;
-    this.hudSkillLabel = this.hudFrame.querySelector('#hud-skill')!;
+    this.hudStaminaInner = this.hudFrame.querySelector('#hud-stamina-inner')!;
     this.hudAttackCdInner = this.hudFrame.querySelector('#hud-attack-cd')!;
-    this.hudSkillCdInner = this.hudFrame.querySelector('#hud-skill-cd')!;
+    this.hudSkillSlots = SKILL_POOL.map((_, i) => this.hudFrame.querySelector(`#hud-skill-cd-${i}`)!);
     this.hudFrame.style.display = 'none';
 
     this.interactPrompt = document.createElement('div');
@@ -80,7 +90,8 @@ export class UIManager {
 
     const hint = document.createElement('div');
     hint.className = 'crosshair-hint';
-    hint.innerHTML = 'WASD mover · Click/Espacio atacar<br/>Q/E rotar cámara · Click derecho arrastrar · Scroll zoom';
+    hint.innerHTML =
+      'WASD mover · Click/Espacio atacar · Shift rodar<br/>1-2-3 habilidades · Q/E rotar cámara · Click derecho arrastrar · Scroll zoom';
     root.appendChild(hint);
   }
 
@@ -90,12 +101,16 @@ export class UIManager {
     this.hudFrame.style.display = show ? 'block' : 'none';
   }
 
-  updateHUD(hp: number, maxHp: number, skillName: string, attackReadiness: number, skillReadiness: number) {
-    const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
-    this.hudHpInner.style.width = `${pct}%`;
-    this.hudSkillLabel.textContent = `[1] ${skillName}`;
+  updateHUD(hp: number, maxHp: number, stamina: number, maxStamina: number, attackReadiness: number, skillReadiness: number[]) {
+    const hpPct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+    this.hudHpInner.style.width = `${hpPct}%`;
+    const staminaPct = Math.max(0, Math.min(100, (stamina / maxStamina) * 100));
+    this.hudStaminaInner.style.width = `${staminaPct}%`;
     this.hudAttackCdInner.style.width = `${Math.max(0, Math.min(1, attackReadiness)) * 100}%`;
-    this.hudSkillCdInner.style.width = `${Math.max(0, Math.min(1, skillReadiness)) * 100}%`;
+    skillReadiness.forEach((readiness, i) => {
+      const slot = this.hudSkillSlots[i];
+      if (slot) slot.style.height = `${(1 - Math.max(0, Math.min(1, readiness))) * 100}%`;
+    });
   }
 
   // ---------- floating damage numbers ----------

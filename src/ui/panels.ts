@@ -72,28 +72,12 @@ export function openInventoryPanel(ui: UIManager, state: PlayerState) {
   open();
 }
 
-export function openSkillsPanel(ui: UIManager, state: PlayerState) {
-  const render = () =>
-    SKILL_POOL.map((skill) => {
-      const isEquipped = state.equippedSkill.id === skill.id;
-      return `
-        <div class="item-row" data-id="${skill.id}">
-          <span class="item-name ${isEquipped ? 'equipped' : ''}">${skill.name} <span style="color:#756a5c">— ${skill.description}</span></span>
-          <button class="${isEquipped ? 'unequip' : ''}" data-id="${skill.id}">${isEquipped ? 'Activa' : 'Equipar'}</button>
-        </div>`;
-    }).join('');
-
-  const open = () => {
-    ui.showPanel('Habilidades', render(), () => {}, (panelEl) => {
-      panelEl.querySelectorAll('button[data-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-id');
-          const skill = SKILL_POOL.find((s) => s.id === id);
-          if (skill) state.equippedSkill = skill;
-          open();
-        });
-      });
-    });
-  };
-  open();
+export function openSkillsPanel(ui: UIManager) {
+  const body = SKILL_POOL.map(
+    (skill, i) => `
+        <div class="item-row">
+          <span class="item-name equipped">[${i + 1}] ${skill.name} <span style="color:#756a5c">— ${skill.description}</span></span>
+        </div>`,
+  ).join('');
+  ui.showPanel('Habilidades', body, () => {});
 }

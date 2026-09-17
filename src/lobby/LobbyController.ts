@@ -90,7 +90,7 @@ export class LobbyController {
     this.ui.setLobbyMenu([
       { label: 'Personaje', onClick: () => openCharacterPanel(this.ui, this.playerState) },
       { label: 'Inventario', onClick: () => openInventoryPanel(this.ui, this.playerState) },
-      { label: 'Habilidades', onClick: () => openSkillsPanel(this.ui, this.playerState) },
+      { label: 'Habilidades', onClick: () => openSkillsPanel(this.ui) },
     ]);
   }
 

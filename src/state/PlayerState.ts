@@ -17,6 +17,8 @@ export interface SkillDef {
   cooldown: number;
 }
 
+// The hotbar has exactly 3 slots (keys 1/2/3), so all 3 skills are always
+// active at once — no separate equip step needed for a pool this small.
 export const SKILL_POOL: SkillDef[] = [
   {
     id: 'power_strike',
@@ -68,7 +70,6 @@ export class PlayerState {
   base: BaseStats = { ...BASE_STATS };
   equipped: Partial<Record<ItemSlot, ItemDef>> = {};
   inventory: ItemDef[] = [];
-  equippedSkill: SkillDef = SKILL_POOL[0];
   currentHp: number = BASE_STATS.maxHp;
   runLoot: ItemDef[] = [];
 

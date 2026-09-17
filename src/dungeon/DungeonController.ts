@@ -2,19 +2,23 @@ import * as THREE from 'three';
 import { generateDungeonGraph } from './DungeonGenerator';
 import { buildDungeon, BuiltDungeon, RuntimeRoom, getBlockerAABB } from './DungeonBuilder';
 import { DIRECTIONS } from './DungeonGenerator';
-import { Player } from '../entities/Player';
+import { Player, STAMINA_MAX } from '../entities/Player';
 import { Enemy, ENEMY_SEPARATION_RADIUS } from '../entities/Enemy';
 import { Projectile, PROJECTILE_RADIUS } from '../entities/Projectile';
 import { CameraController } from '../core/CameraController';
 import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, intersects, makeAABB, circleIntersects, attemptMove } from '../utils/collision';
-import { LOOT_TABLE, makeLootItem } from '../state/PlayerState';
+import { LOOT_TABLE, makeLootItem, SKILL_POOL } from '../state/PlayerState';
 import { updateWallFade } from '../scene/wallFade';
 
 // Combat rooms only seal/activate once the player has cleared this margin past
 // the doorway; otherwise the door blocker spawns right on top of the player.
 const ACTIVATION_MARGIN = 3;
+
+function isCombatRoomType(type: string): boolean {
+  return type === 'combat' || type === 'boss';
+}
 
 const PLAYER_HIT_KNOCKBACK = 5;
 const ENEMY_HIT_PLAYER_KNOCKBACK = 4;
@@ -142,12 +146,25 @@ export class DungeonController {
     if (!this.built) return;
 
     this.player.update(delta);
-    if (this.skillCooldownRemaining > 0) this.skillCooldownRemaining -= delta;
+    for (let i = 0; i < this.skillCooldowns.length; i++) {
+      if (this.skillCooldowns[i] > 0) this.skillCooldowns[i] -= delta;
+    }
 
     // ---- player movement (camera-relative) ----
     const movementObstacles = this.getAllObstacles();
     const axis = this.input.getMovementAxis();
-    if (axis.x !== 0 || axis.z !== 0) {
+
+    if (this.input.wasJustPressed('ShiftLeft') || this.input.wasJustPressed('ShiftRight')) {
+      const rollDir = axis.x !== 0 || axis.z !== 0 ? this.camera.computeMoveDirection(axis.x, axis.z) : { x: 0, z: 0 };
+      if (!this.player.tryRoll(rollDir.x, rollDir.z)) {
+        this.ui.showToast('Sin estamina para rodar');
+      }
+    }
+
+    if (this.player.isRolling) {
+      const v = this.player.rollVelocity;
+      attemptMove(() => this.player.getAABB(), this.player, v.x * delta, v.z * delta, movementObstacles);
+    } else if (axis.x !== 0 || axis.z !== 0) {
       const dir = this.camera.computeMoveDirection(axis.x, axis.z);
       const speed = this.player.effectiveSpeed;
       attemptMove(() => this.player.getAABB(), this.player, dir.x * speed * delta, dir.z * speed * delta, movementObstacles);
@@ -179,10 +196,10 @@ export class DungeonController {
       }
     }
 
-    // ---- skill activation ----
-    if (this.input.wasJustPressed('Digit1')) {
-      this.tryUseSkill();
-    }
+    // ---- skill activation (hotbar slots 1/2/3) ----
+    if (this.input.wasJustPressed('Digit1')) this.tryUseSkill(0);
+    if (this.input.wasJustPressed('Digit2')) this.tryUseSkill(1);
+    if (this.input.wasJustPressed('Digit3')) this.tryUseSkill(2);
 
     // ---- room activation check ----
     // Only trigger once the player has stepped well clear of the doorway, so the
@@ -190,7 +207,7 @@ export class DungeonController {
     const currentRoom = this.findRoomContaining(this.player.position.x, this.player.position.z);
     if (
       currentRoom &&
-      currentRoom.node.type === 'combat' &&
+      isCombatRoomType(currentRoom.node.type) &&
       !currentRoom.activated &&
       this.player.position.x > currentRoom.bounds.minX + ACTIVATION_MARGIN &&
       this.player.position.x < currentRoom.bounds.maxX - ACTIVATION_MARGIN &&
@@ -216,7 +233,7 @@ export class DungeonController {
     // ---- enemy AI + projectiles for active rooms ----
     const obstaclesForEnemies = this.getAllObstacles();
     for (const room of this.built.rooms.values()) {
-      if (room.node.type !== 'combat' || !room.activated || room.node.cleared) continue;
+      if (!isCombatRoomType(room.node.type) || !room.activated || room.node.cleared) continue;
 
       let anyAlive = false;
       for (const enemy of room.enemies) {
@@ -338,25 +355,28 @@ export class DungeonController {
       return;
     }
 
-    const skillCooldown = this.player.playerState.equippedSkill.cooldown;
-    const skillReadiness = 1 - THREE.MathUtils.clamp(this.skillCooldownRemaining / skillCooldown, 0, 1);
+    const skillReadiness = SKILL_POOL.map(
+      (skill, i) => 1 - THREE.MathUtils.clamp(this.skillCooldowns[i] / skill.cooldown, 0, 1),
+    );
     this.ui.updateHUD(
       this.player.hp,
       this.player.maxHp,
-      this.player.playerState.equippedSkill.name,
+      this.player.stamina,
+      STAMINA_MAX,
       this.player.attackReadiness,
       skillReadiness,
     );
   }
 
-  private skillCooldownRemaining = 0;
-  private tryUseSkill() {
-    if (this.skillCooldownRemaining > 0) {
+  private skillCooldowns = [0, 0, 0];
+  private tryUseSkill(slot: number) {
+    const skill = SKILL_POOL[slot];
+    if (!skill) return;
+    if (this.skillCooldowns[slot] > 0) {
       this.ui.showToast('Habilidad en enfriamiento');
       return;
     }
-    const skill = this.player.playerState.equippedSkill;
-    this.skillCooldownRemaining = skill.cooldown;
+    this.skillCooldowns[slot] = skill.cooldown;
     if (skill.id === 'power_strike') {
       this.player.queueDoubleDamageNextAttack();
       this.ui.showToast('¡Golpe Poderoso listo!');

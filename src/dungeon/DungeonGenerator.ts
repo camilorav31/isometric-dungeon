@@ -1,4 +1,4 @@
-export type RoomType = 'start' | 'combat' | 'treasure';
+export type RoomType = 'start' | 'combat' | 'treasure' | 'boss';
 export type Direction = 'N' | 'S' | 'E' | 'W';
 
 export const DIRECTIONS: Direction[] = ['N', 'S', 'E', 'W'];
@@ -92,18 +92,54 @@ export function generateDungeonGraph(): DungeonGraph {
     }
   }
 
-  // Pick a leaf room (single connection, not start) to become the treasure room.
-  const leaves = [...rooms.values()].filter((r) => r.type !== 'start' && Object.keys(r.doors).length === 1);
-  if (leaves.length > 0) {
-    const treasureRoom = leaves[randInt(0, leaves.length - 1)];
+  // The room farthest from the start (by graph distance) becomes the boss room —
+  // naturally the last one a player reaches while exploring outward from start.
+  const distances = bfsDistances(rooms, startId);
+  let bossRoom: RoomNode | null = null;
+  let maxDist = -1;
+  for (const room of rooms.values()) {
+    if (room.type === 'start') continue;
+    const d = distances.get(room.id) ?? 0;
+    if (d > maxDist) {
+      maxDist = d;
+      bossRoom = room;
+    }
+  }
+  if (bossRoom) bossRoom.type = 'boss';
+
+  // Pick a leaf room (single connection, not start/boss) to become the treasure room.
+  const leaves = [...rooms.values()].filter(
+    (r) => r.type !== 'start' && r.type !== 'boss' && Object.keys(r.doors).length === 1,
+  );
+  const treasureCandidates = leaves.length > 0 ? leaves : [...rooms.values()].filter((r) => r.type === 'combat');
+  if (treasureCandidates.length > 0) {
+    const treasureRoom = treasureCandidates[randInt(0, treasureCandidates.length - 1)];
     treasureRoom.type = 'treasure';
   }
 
   for (const room of rooms.values()) {
     if (room.type === 'combat') {
       room.enemyCount = randInt(1, 4);
+    } else if (room.type === 'boss') {
+      room.enemyCount = 1;
     }
   }
 
   return { rooms, startRoomId: startId };
+}
+
+function bfsDistances(rooms: Map<string, RoomNode>, startId: string): Map<string, number> {
+  const distances = new Map<string, number>([[startId, 0]]);
+  const queue: string[] = [startId];
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const current = rooms.get(currentId)!;
+    const currentDist = distances.get(currentId)!;
+    for (const neighborId of Object.values(current.doors)) {
+      if (neighborId === undefined || distances.has(neighborId)) continue;
+      distances.set(neighborId, currentDist + 1);
+      queue.push(neighborId);
+    }
+  }
+  return distances;
 }

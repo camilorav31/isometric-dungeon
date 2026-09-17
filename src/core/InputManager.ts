@@ -30,6 +30,10 @@ export class InputManager {
     'KeyE',
     'Space',
     'Digit1',
+    'Digit2',
+    'Digit3',
+    'ShiftLeft',
+    'ShiftRight',
   ]);
 
   private onKeyDown = (e: KeyboardEvent) => {
