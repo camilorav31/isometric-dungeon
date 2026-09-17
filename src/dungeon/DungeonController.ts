@@ -3,6 +3,7 @@ import { generateDungeonGraph } from './DungeonGenerator';
 import { buildDungeon, BuiltDungeon, RuntimeRoom, getBlockerAABB } from './DungeonBuilder';
 import { DIRECTIONS } from './DungeonGenerator';
 import { Player } from '../entities/Player';
+import { Enemy, ENEMY_SEPARATION_RADIUS } from '../entities/Enemy';
 import { Projectile, PROJECTILE_RADIUS } from '../entities/Projectile';
 import { CameraController } from '../core/CameraController';
 import { InputManager } from '../core/InputManager';
@@ -14,6 +15,31 @@ import { updateWallFade } from '../scene/wallFade';
 // Combat rooms only seal/activate once the player has cleared this margin past
 // the doorway; otherwise the door blocker spawns right on top of the player.
 const ACTIVATION_MARGIN = 3;
+
+const PLAYER_HIT_KNOCKBACK = 5;
+const ENEMY_HIT_PLAYER_KNOCKBACK = 4;
+const PROJECTILE_HIT_KNOCKBACK = 2.5;
+
+function separateEnemies(enemies: Enemy[], obstacles: AABB[]) {
+  for (let i = 0; i < enemies.length; i++) {
+    const a = enemies[i];
+    if (!a.alive) continue;
+    for (let j = i + 1; j < enemies.length; j++) {
+      const b = enemies[j];
+      if (!b.alive) continue;
+      const dx = b.position.x - a.position.x;
+      const dz = b.position.z - a.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.0001 && dist < ENEMY_SEPARATION_RADIUS) {
+        const push = (ENEMY_SEPARATION_RADIUS - dist) / 2;
+        const nx = dx / dist;
+        const nz = dz / dist;
+        attemptMove(() => a.getAABB(), a, -nx * push, -nz * push, obstacles);
+        attemptMove(() => b.getAABB(), b, nx * push, nz * push, obstacles);
+      }
+    }
+  }
+}
 
 export class DungeonController {
   scene: THREE.Scene;
@@ -119,14 +145,15 @@ export class DungeonController {
     if (this.skillCooldownRemaining > 0) this.skillCooldownRemaining -= delta;
 
     // ---- player movement (camera-relative) ----
+    const movementObstacles = this.getAllObstacles();
     const axis = this.input.getMovementAxis();
     if (axis.x !== 0 || axis.z !== 0) {
       const dir = this.camera.computeMoveDirection(axis.x, axis.z);
       const speed = this.player.effectiveSpeed;
-      const obstacles = this.getAllObstacles();
-      attemptMove(() => this.player.getAABB(), this.player, dir.x * speed * delta, dir.z * speed * delta, obstacles);
+      attemptMove(() => this.player.getAABB(), this.player, dir.x * speed * delta, dir.z * speed * delta, movementObstacles);
       this.player.setFacingFromMovement(dir.x, dir.z);
     }
+    this.player.updateKnockback(delta, movementObstacles);
 
     // ---- player attack ----
     const wantsAttack = this.input.consumeLeftClick() || this.input.wasJustPressed('Space');
@@ -142,6 +169,11 @@ export class DungeonController {
             if (dist > attack.range) continue;
             if (!Player.isWithinAttackCone(attack.facingAngle, dx, dz)) continue;
             enemy.takeDamage(attack.damage);
+            enemy.triggerFlash(0xffffff, 0.15);
+            enemy.applyKnockback(dx, dz, PLAYER_HIT_KNOCKBACK);
+            const headPos = new THREE.Vector3();
+            enemy.getHeadWorldPosition(headPos);
+            this.ui.spawnDamageNumber(headPos, this.camera.camera, attack.damage, 'enemy');
           }
         }
       }
@@ -188,6 +220,7 @@ export class DungeonController {
 
       let anyAlive = false;
       for (const enemy of room.enemies) {
+        enemy.update(delta);
         if (!enemy.alive) continue;
         anyAlive = true;
         if (!enemy.group.visible) enemy.group.visible = true;
@@ -202,8 +235,16 @@ export class DungeonController {
             obstaclesForEnemies,
           );
         }
+        enemy.updateKnockback(delta, obstaclesForEnemies);
         if (result.meleeAttack) {
-          this.player.takeDamage(enemy.damage);
+          const dx = this.player.position.x - enemy.position.x;
+          const dz = this.player.position.z - enemy.position.z;
+          if (this.player.takeDamage(enemy.damage)) {
+            this.player.applyKnockback(dx, dz, ENEMY_HIT_PLAYER_KNOCKBACK);
+            const headPos = new THREE.Vector3();
+            this.player.getHeadWorldPosition(headPos);
+            this.ui.spawnDamageNumber(headPos, this.camera.camera, enemy.damage, 'player');
+          }
         }
         if (result.shoot) {
           const proj = new Projectile(
@@ -218,6 +259,8 @@ export class DungeonController {
           this.built.group.add(proj.group);
         }
       }
+
+      separateEnemies(room.enemies, obstaclesForEnemies);
 
       if (!anyAlive && !room.node.cleared) {
         room.node.cleared = true;
@@ -235,7 +278,12 @@ export class DungeonController {
       if (
         circleIntersects(proj.group.position.x, proj.group.position.z, PROJECTILE_RADIUS, this.player.position.x, this.player.position.z, 0.4)
       ) {
-        this.player.takeDamage(proj.damage);
+        if (this.player.takeDamage(proj.damage)) {
+          this.player.applyKnockback(proj.velocity.x, proj.velocity.z, PROJECTILE_HIT_KNOCKBACK);
+          const headPos = new THREE.Vector3();
+          this.player.getHeadWorldPosition(headPos);
+          this.ui.spawnDamageNumber(headPos, this.camera.camera, proj.damage, 'player');
+        }
         proj.alive = false;
         continue;
       }
@@ -290,7 +338,15 @@ export class DungeonController {
       return;
     }
 
-    this.ui.updateHUD(this.player.hp, this.player.maxHp, this.player.playerState.equippedSkill.name);
+    const skillCooldown = this.player.playerState.equippedSkill.cooldown;
+    const skillReadiness = 1 - THREE.MathUtils.clamp(this.skillCooldownRemaining / skillCooldown, 0, 1);
+    this.ui.updateHUD(
+      this.player.hp,
+      this.player.maxHp,
+      this.player.playerState.equippedSkill.name,
+      this.player.attackReadiness,
+      skillReadiness,
+    );
   }
 
   private skillCooldownRemaining = 0;

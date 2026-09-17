@@ -11,6 +11,8 @@ const ATTACK_ANIM_DURATION = 0.2;
 const SWORD_REST_ROTATION = -0.4;
 const SWORD_SWING_START = -1.9;
 const SWORD_SWING_END = 0.9;
+const INVULN_DURATION = 0.5;
+const INVULN_BLINK_RATE = 16; // blink cycles/sec while invulnerable
 
 export class Player extends Entity {
   facingAngle = Math.PI; // radians, 0 = +Z
@@ -21,6 +23,7 @@ export class Player extends Entity {
   private speedBoostTimer = 0;
   private nextAttackDamageMultiplier = 1;
   private swordPivot: THREE.Group;
+  private invulnTimer = 0;
 
   constructor(public playerState: PlayerState) {
     super(playerState.maxHp, 0.4, 0.3, playerState.speed);
@@ -62,9 +65,22 @@ export class Player extends Entity {
     this.playerState.currentHp = this.hp;
   }
 
-  takeDamage(amount: number) {
+  get isInvulnerable(): boolean {
+    return this.invulnTimer > 0;
+  }
+
+  get attackReadiness(): number {
+    return 1 - Math.max(0, this.attackCooldownTimer) / ATTACK_COOLDOWN;
+  }
+
+  /** Returns false (no-op) if the hit was absorbed by post-hit invulnerability. */
+  takeDamage(amount: number): boolean {
+    if (this.invulnTimer > 0) return false;
     super.takeDamage(amount);
     this.playerState.currentHp = this.hp;
+    this.invulnTimer = INVULN_DURATION;
+    this.triggerFlash(0xff3030, 0.4);
+    return true;
   }
 
   setFacingFromMovement(dx: number, dz: number) {
@@ -74,6 +90,8 @@ export class Player extends Entity {
   }
 
   update(delta: number) {
+    this.updateFlash(delta);
+
     if (this.attackCooldownTimer > 0) this.attackCooldownTimer -= delta;
     if (this.attackAnimTimer > 0) {
       this.attackAnimTimer -= delta;
@@ -85,6 +103,13 @@ export class Player extends Entity {
     if (this.speedBoostTimer > 0) {
       this.speedBoostTimer -= delta;
       if (this.speedBoostTimer <= 0) this.speedMultiplier = 1;
+    }
+
+    if (this.invulnTimer > 0) {
+      this.invulnTimer -= delta;
+      this.group.visible = Math.floor(this.invulnTimer * INVULN_BLINK_RATE) % 2 === 0;
+    } else {
+      this.group.visible = true;
     }
 
     if (this.isAttacking) {

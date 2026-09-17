@@ -13,11 +13,15 @@ export interface ShootRequest {
   damage: number;
 }
 
+const DEATH_HIDE_DELAY = 0.25;
+export const ENEMY_SEPARATION_RADIUS = 0.9;
+
 export class Enemy extends Entity {
   type: EnemyType;
   roomId: string;
   active = false;
   private attackTimer = 0;
+  private deathHideTimer = DEATH_HIDE_DELAY;
   damage: number;
   private aggroRange: number;
   private attackRange: number;
@@ -38,6 +42,15 @@ export class Enemy extends Entity {
     const bodyColor = type === 'melee' ? PALETTE.danger : '#5a2d5e';
     this.group = createCharacterMesh(bodyColor, PALETTE.danger);
     this.group.scale.setScalar(type === 'melee' ? 1.15 : 0.95);
+  }
+
+  /** Flash + knockback decay + a brief delay before the corpse disappears. Call every frame. */
+  update(delta: number) {
+    this.updateFlash(delta);
+    if (!this.alive && this.group.visible) {
+      this.deathHideTimer -= delta;
+      if (this.deathHideTimer <= 0) this.group.visible = false;
+    }
   }
 
   /** Returns a movement delta (world units, not yet scaled by delta-time) and optional shoot request. */

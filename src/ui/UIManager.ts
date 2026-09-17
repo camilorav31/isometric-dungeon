@@ -15,6 +15,9 @@ export class UIManager {
   private hudFrame: HTMLDivElement;
   private hudHpInner: HTMLDivElement;
   private hudSkillLabel: HTMLDivElement;
+  private hudAttackCdInner: HTMLDivElement;
+  private hudSkillCdInner: HTMLDivElement;
+  private damageNumberLayer: HTMLDivElement;
 
   private interactPrompt: HTMLDivElement;
   private lobbyMenu: HTMLDivElement;
@@ -31,16 +34,24 @@ export class UIManager {
     this.hpBarLayer = document.createElement('div');
     root.appendChild(this.hpBarLayer);
 
+    this.damageNumberLayer = document.createElement('div');
+    root.appendChild(this.damageNumberLayer);
+
     this.hudFrame = document.createElement('div');
     this.hudFrame.className = 'hud-bar-frame';
     this.hudFrame.innerHTML = `
       <div class="hud-label">Vida</div>
       <div class="hud-hp-outer"><div class="hud-hp-inner" id="hud-hp-inner"></div></div>
+      <div class="hud-label" style="margin-top:8px;">Ataque</div>
+      <div class="hud-cd-outer"><div class="hud-cd-inner" id="hud-attack-cd"></div></div>
       <div class="hud-skill" id="hud-skill"></div>
+      <div class="hud-cd-outer"><div class="hud-cd-inner" id="hud-skill-cd"></div></div>
     `;
     root.appendChild(this.hudFrame);
     this.hudHpInner = this.hudFrame.querySelector('#hud-hp-inner')!;
     this.hudSkillLabel = this.hudFrame.querySelector('#hud-skill')!;
+    this.hudAttackCdInner = this.hudFrame.querySelector('#hud-attack-cd')!;
+    this.hudSkillCdInner = this.hudFrame.querySelector('#hud-skill-cd')!;
     this.hudFrame.style.display = 'none';
 
     this.interactPrompt = document.createElement('div');
@@ -79,10 +90,29 @@ export class UIManager {
     this.hudFrame.style.display = show ? 'block' : 'none';
   }
 
-  updateHUD(hp: number, maxHp: number, skillName: string) {
+  updateHUD(hp: number, maxHp: number, skillName: string, attackReadiness: number, skillReadiness: number) {
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     this.hudHpInner.style.width = `${pct}%`;
     this.hudSkillLabel.textContent = `[1] ${skillName}`;
+    this.hudAttackCdInner.style.width = `${Math.max(0, Math.min(1, attackReadiness)) * 100}%`;
+    this.hudSkillCdInner.style.width = `${Math.max(0, Math.min(1, skillReadiness)) * 100}%`;
+  }
+
+  // ---------- floating damage numbers ----------
+
+  spawnDamageNumber(worldPos: THREE.Vector3, camera: THREE.Camera, amount: number, variant: 'enemy' | 'player' = 'enemy') {
+    const v = worldPos.clone().project(camera);
+    if (v.z > 1) return;
+    const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+
+    const el = document.createElement('div');
+    el.className = variant === 'player' ? 'damage-number player-damage' : 'damage-number';
+    el.textContent = String(Math.round(amount));
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    this.damageNumberLayer.appendChild(el);
+    window.setTimeout(() => el.remove(), 900);
   }
 
   // ---------- floating entity hp bars ----------

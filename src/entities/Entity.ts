@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { AABB, makeAABB } from '../utils/collision';
+import { AABB, makeAABB, attemptMove } from '../utils/collision';
+
+const KNOCKBACK_DECAY = 8; // per second
 
 export abstract class Entity {
   group: THREE.Group = new THREE.Group();
@@ -9,6 +11,11 @@ export abstract class Entity {
   halfWidth: number;
   halfDepth: number;
   speed: number;
+  knockback = { x: 0, z: 0 };
+
+  private flashTimer = 0;
+  private flashMaterials: THREE.MeshStandardMaterial[] = [];
+  private flashOriginal: THREE.Color[] = [];
 
   constructor(maxHp: number, halfWidth: number, halfDepth: number, speed: number) {
     this.maxHp = maxHp;
@@ -40,5 +47,51 @@ export abstract class Entity {
   getHeadWorldPosition(target: THREE.Vector3) {
     target.copy(this.group.position);
     target.y += 2.05;
+  }
+
+  /** Briefly tints every material in this entity's mesh (hit feedback). */
+  triggerFlash(color: THREE.ColorRepresentation = 0xffffff, duration = 0.15) {
+    if (this.flashTimer <= 0) {
+      this.flashMaterials = [];
+      this.flashOriginal = [];
+      this.group.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshStandardMaterial) {
+          this.flashMaterials.push(obj.material);
+          this.flashOriginal.push(obj.material.emissive.clone());
+          obj.material.emissive.set(color);
+        }
+      });
+    }
+    this.flashTimer = duration;
+  }
+
+  protected updateFlash(delta: number) {
+    if (this.flashTimer <= 0) return;
+    this.flashTimer -= delta;
+    if (this.flashTimer <= 0) {
+      this.flashMaterials.forEach((mat, i) => mat.emissive.copy(this.flashOriginal[i]));
+      this.flashMaterials = [];
+      this.flashOriginal = [];
+    }
+  }
+
+  /** Shoves the entity away from (dirX, dirZ); accumulates so overlapping hits stack a bit. */
+  applyKnockback(dirX: number, dirZ: number, strength: number) {
+    const len = Math.hypot(dirX, dirZ) || 1;
+    this.knockback.x += (dirX / len) * strength;
+    this.knockback.z += (dirZ / len) * strength;
+  }
+
+  /** Applies and decays any pending knockback; call once per frame with the current obstacle set. */
+  updateKnockback(delta: number, obstacles: AABB[]) {
+    if (Math.abs(this.knockback.x) < 0.02 && Math.abs(this.knockback.z) < 0.02) {
+      this.knockback.x = 0;
+      this.knockback.z = 0;
+      return;
+    }
+    attemptMove(() => this.getAABB(), this, this.knockback.x * delta, this.knockback.z * delta, obstacles);
+    const decay = Math.max(0, 1 - KNOCKBACK_DECAY * delta);
+    this.knockback.x *= decay;
+    this.knockback.z *= decay;
   }
 }
