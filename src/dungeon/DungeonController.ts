@@ -28,6 +28,11 @@ interface MinimapRoomData {
 // the doorway; otherwise the door blocker spawns right on top of the player.
 const ACTIVATION_MARGIN = 3;
 
+// A room (and its torch lights) stays rendered while the player is within this
+// radius of its center — comfortably covers "in the room" and "in the doorway
+// approaching/leaving it" without keeping every room in the dungeon lit at once.
+const ROOM_VISIBILITY_RADIUS = 14;
+
 function isCombatRoomType(type: string): boolean {
   return type === 'combat' || type === 'boss';
 }
@@ -268,8 +273,29 @@ export class DungeonController {
       }
     }
 
+    // ---- room culling: only render/light rooms near the player ----
+    // With up to 8 rooms each holding 4 torch lights, leaving them all live at once
+    // was the main source of the reported lag (dozens of simultaneous point lights
+    // plus their walls/floors/pillars). Only the current room and its immediate
+    // neighborhood stay visible; everything else is hidden wholesale.
+    for (const room of this.built.rooms.values()) {
+      const dx = room.worldX - this.player.position.x;
+      const dz = room.worldZ - this.player.position.z;
+      const near = room === currentRoom || Math.hypot(dx, dz) < ROOM_VISIBILITY_RADIUS;
+      room.roomGroup.visible = near;
+      if (room.treasureMesh) room.treasureMesh.visible = near;
+      if (room.portalMesh) room.portalMesh.visible = near;
+      if (room.descendMesh) room.descendMesh.visible = near && room.node.cleared;
+    }
+    for (const trap of this.built.traps) {
+      const dx = trap.group.position.x - this.player.position.x;
+      const dz = trap.group.position.z - this.player.position.z;
+      trap.group.visible = Math.hypot(dx, dz) < ROOM_VISIBILITY_RADIUS;
+    }
+
     // ---- fade walls facing the camera in the player's current room ----
     for (const room of this.built.rooms.values()) {
+      if (!room.roomGroup.visible) continue;
       updateWallFade(room.wallMeshesByDir, this.camera.yaw, delta, room === currentRoom);
     }
 
@@ -328,7 +354,8 @@ export class DungeonController {
         room.node.cleared = true;
         this.unsealRoom(room);
         if (room.node.type === 'boss') {
-          if (room.descendMesh) room.descendMesh.visible = true;
+          // room.node.cleared now gates the descend stairway's visibility every
+          // frame in the room-culling pass below — no one-time reveal needed here.
           this.ui.showToast('¡El jefe ha caído! Se revela una escalera hacia lo profundo.');
         } else {
           this.ui.showToast('Sala despejada');

@@ -29,6 +29,8 @@ export interface RuntimeRoom {
   worldX: number;
   worldZ: number;
   bounds: AABB;
+  /** Walls/floor/torches/pillars for this room — toggled wholesale for render/light culling. */
+  roomGroup: THREE.Group;
   doorBlockerMeshes: Partial<Record<Direction, THREE.Mesh>>;
   wallMeshesByDir: Partial<Record<Direction, THREE.Mesh[]>>;
   sealed: boolean;
@@ -219,6 +221,7 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
       worldX,
       worldZ,
       bounds: makeAABB(worldX, worldZ, HALF_ROOM, HALF_ROOM),
+      roomGroup,
       doorBlockerMeshes,
       wallMeshesByDir,
       sealed: false,
