@@ -5,7 +5,7 @@ import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, makeAABB, attemptMove } from '../utils/collision';
 import { createChest, createFloor, createPortal, createTable, createTorch, createWallSegment, PALETTE } from '../utils/geometryFactory';
-import { openCharacterPanel, openInventoryPanel, openSkillsPanel } from '../ui/panels';
+import { openCharacterPanel, openInventoryPanel, openSkillsPanel, openUpgradesPanel } from '../ui/panels';
 import { PlayerState } from '../state/PlayerState';
 import { Direction } from '../dungeon/DungeonGenerator';
 import { updateWallFade } from '../scene/wallFade';
@@ -89,9 +89,11 @@ export class LobbyController {
   private setupMenu() {
     this.ui.setLobbyMenu([
       { label: 'Personaje', onClick: () => openCharacterPanel(this.ui, this.playerState) },
-      { label: 'Inventario', onClick: () => openInventoryPanel(this.ui, this.playerState) },
+      { label: 'Inventario', onClick: () => openInventoryPanel(this.ui, this.playerState, this.player) },
       { label: 'Habilidades', onClick: () => openSkillsPanel(this.ui) },
+      { label: 'Mejoras', onClick: () => openUpgradesPanel(this.ui, this.playerState, this.player) },
     ]);
+    this.ui.showSoulsDisplay(true);
   }
 
   teardown() {
@@ -99,6 +101,7 @@ export class LobbyController {
     this.group = null;
     this.ui.setLobbyMenu(null);
     this.ui.setInteractPrompt(null);
+    this.ui.showSoulsDisplay(false);
   }
 
   update(delta: number) {
@@ -111,6 +114,7 @@ export class LobbyController {
     }
     this.player.update(delta);
     updateWallFade(this.wallMeshesByDir, this.camera.yaw, delta, true);
+    this.ui.updateSoulsDisplay(this.playerState.souls);
 
     const dx = this.portalPos.x - this.player.position.x;
     const dz = this.portalPos.z - this.player.position.z;

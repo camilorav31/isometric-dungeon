@@ -19,11 +19,15 @@ export interface ShootRequest {
 
 const DEATH_HIDE_DELAY = 0.25;
 export const ENEMY_SEPARATION_RADIUS = 0.9;
+const SOUL_VALUES: Record<EnemyType, number> = { melee: 5, ranged: 6, tank: 15, boss: 50 };
 
 export class Enemy extends Entity {
   type: EnemyType;
   roomId: string;
   active = false;
+  /** Persistent currency reward for the kill; awarded once by the caller. */
+  soulValue: number;
+  soulsAwarded = false;
   private attackTimer = 0;
   private telegraphTimer = 0;
   private telegraphDuration = 0;
@@ -42,6 +46,7 @@ export class Enemy extends Entity {
     super(stats.hp, type === 'boss' ? 0.6 : 0.4, type === 'boss' ? 0.45 : 0.3, stats.speed);
     this.type = type;
     this.roomId = roomId;
+    this.soulValue = SOUL_VALUES[type];
     this.damage = stats.damage;
     this.aggroRange = stats.aggroRange;
     this.attackRange = type === 'ranged' ? 0 : stats.attackRange;

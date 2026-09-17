@@ -26,6 +26,7 @@ export class UIManager {
   private messageOverlay: HTMLDivElement;
   private toastEl: HTMLDivElement;
   private roomBanner: HTMLDivElement;
+  private soulsDisplay: HTMLDivElement;
   private toastTimeout: number | undefined;
   private bannerTimeout: number | undefined;
 
@@ -93,6 +94,20 @@ export class UIManager {
     hint.innerHTML =
       'WASD mover · Click/Espacio atacar · Shift rodar<br/>1-2-3 habilidades · Q/E rotar cámara · Click derecho arrastrar · Scroll zoom';
     root.appendChild(hint);
+
+    this.soulsDisplay = document.createElement('div');
+    this.soulsDisplay.className = 'souls-display';
+    root.appendChild(this.soulsDisplay);
+  }
+
+  // ---------- souls (lobby currency badge) ----------
+
+  showSoulsDisplay(show: boolean) {
+    this.soulsDisplay.style.display = show ? 'block' : 'none';
+  }
+
+  updateSoulsDisplay(souls: number) {
+    this.soulsDisplay.textContent = `Almas: ${souls}`;
   }
 
   // ---------- HUD ----------

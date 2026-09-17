@@ -171,20 +171,50 @@ export function createCharacterMesh(bodyColor: string, accentColor: string): THR
   return group;
 }
 
-export function createSwordMesh(): THREE.Group {
+export type WeaponVisual = 'dagger' | 'sword' | 'axe';
+
+/** Builds the equipped weapon's mesh; `bladeColor` reflects the item's rarity tint. */
+export function createWeaponMesh(kind: WeaponVisual = 'sword', bladeColor = '#c9c9c9'): THREE.Group {
   const group = new THREE.Group();
-  const blade = new THREE.Mesh(
-    new THREE.BoxGeometry(0.09, 0.75, 0.03),
-    new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 0.6, roughness: 0.35 }),
-  );
-  blade.position.y = 0.45;
-  blade.castShadow = true;
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), stdMat('#2b1a0d'));
-  guard.castShadow = true;
+  const bladeMat = new THREE.MeshStandardMaterial({
+    color: bladeColor,
+    emissive: new THREE.Color(bladeColor),
+    emissiveIntensity: bladeColor === '#c9c9c9' ? 0 : 0.35,
+    metalness: 0.6,
+    roughness: 0.35,
+  });
+
   const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.22, 6), stdMat('#2b1a0d'));
   hilt.position.y = -0.14;
   hilt.castShadow = true;
-  group.add(blade, guard, hilt);
+  group.add(hilt);
+
+  if (kind === 'dagger') {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.4, 0.025), bladeMat);
+    blade.position.y = 0.22;
+    blade.castShadow = true;
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.05), stdMat('#2b1a0d'));
+    guard.castShadow = true;
+    group.add(blade, guard);
+  } else if (kind === 'axe') {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.55, 6), stdMat('#3d2817'));
+    handle.position.y = 0.3;
+    handle.castShadow = true;
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.32, 4), bladeMat);
+    head.position.set(0, 0.58, 0);
+    head.rotation.z = Math.PI / 2;
+    head.rotation.y = Math.PI / 4;
+    head.castShadow = true;
+    group.add(handle, head);
+  } else {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.75, 0.03), bladeMat);
+    blade.position.y = 0.45;
+    blade.castShadow = true;
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), stdMat('#2b1a0d'));
+    guard.castShadow = true;
+    group.add(blade, guard);
+  }
+
   return group;
 }
 

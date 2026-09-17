@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Entity } from './Entity';
-import { PlayerState } from '../state/PlayerState';
-import { createCharacterMesh, createSwordMesh, PALETTE } from '../utils/geometryFactory';
+import { PlayerState, Rarity } from '../state/PlayerState';
+import { createCharacterMesh, createWeaponMesh, PALETTE } from '../utils/geometryFactory';
 
 export const PLAYER_ATTACK_RANGE = 2.2;
 export const PLAYER_ATTACK_ANGLE = Math.PI / 2.2; // cone half-angle-ish (used as dot threshold below)
@@ -14,7 +14,6 @@ const SWORD_SWING_END = 0.9;
 const INVULN_DURATION = 0.5;
 const INVULN_BLINK_RATE = 16; // blink cycles/sec while invulnerable
 
-export const STAMINA_MAX = 100;
 const STAMINA_REGEN_RATE = 30; // per second
 const STAMINA_REGEN_DELAY = 0.45; // pause after spending before regen resumes
 const ATTACK_STAMINA_COST = 12;
@@ -22,6 +21,14 @@ const ROLL_STAMINA_COST = 30;
 const ROLL_DURATION = 0.32;
 const ROLL_SPEED = 13;
 const ROLL_TILT = -0.5;
+
+// Distinct from the UI's RARITY_COLOR (tuned for text legibility) — this is how
+// the blade itself should look: plain steel for commons, a glowing tint above that.
+const BLADE_COLOR_BY_RARITY: Record<Rarity, string> = {
+  common: '#c9c9c9',
+  rare: '#5aa8e8',
+  unique: '#e8c468',
+};
 
 export class Player extends Entity {
   facingAngle = Math.PI; // radians, 0 = +Z
@@ -32,8 +39,9 @@ export class Player extends Entity {
   private speedBoostTimer = 0;
   private nextAttackDamageMultiplier = 1;
   private swordPivot: THREE.Group;
+  private weaponMesh: THREE.Group;
   private invulnTimer = 0;
-  stamina = STAMINA_MAX;
+  stamina: number;
   private staminaRegenDelayTimer = 0;
   private rollTimer = 0;
   private rollDirX = 0;
@@ -42,23 +50,41 @@ export class Player extends Entity {
   constructor(public playerState: PlayerState) {
     super(playerState.maxHp, 0.4, 0.3, playerState.speed);
     this.group = createCharacterMesh('#5b6b7a', PALETTE.loot);
+    this.stamina = playerState.maxStamina;
 
     this.swordPivot = new THREE.Group();
     this.swordPivot.position.set(0.42, 0.95, 0);
     this.swordPivot.rotation.x = SWORD_REST_ROTATION;
-    const sword = createSwordMesh();
-    sword.position.set(0, -0.3, 0.15);
-    this.swordPivot.add(sword);
+    this.weaponMesh = createWeaponMesh();
+    this.weaponMesh.position.set(0, -0.3, 0.15);
+    this.swordPivot.add(this.weaponMesh);
     this.group.add(this.swordPivot);
 
     this.syncStatsFromState();
+  }
+
+  get maxStamina(): number {
+    return this.playerState.maxStamina;
   }
 
   syncStatsFromState() {
     this.maxHp = this.playerState.maxHp;
     this.hp = this.playerState.currentHp;
     this.speed = this.playerState.speed;
+    this.stamina = this.maxStamina;
     this.alive = this.hp > 0;
+    this.refreshWeaponVisual();
+  }
+
+  /** Rebuilds the held weapon mesh to match the currently equipped weapon (or the bare default). */
+  refreshWeaponVisual() {
+    this.swordPivot.remove(this.weaponMesh);
+    const weapon = this.playerState.equipped.weapon;
+    const kind = weapon?.weaponVisual ?? 'sword';
+    const color = weapon ? BLADE_COLOR_BY_RARITY[weapon.rarity] : BLADE_COLOR_BY_RARITY.common;
+    this.weaponMesh = createWeaponMesh(kind, color);
+    this.weaponMesh.position.set(0, -0.3, 0.15);
+    this.swordPivot.add(this.weaponMesh);
   }
 
   get effectiveSpeed(): number {
@@ -88,7 +114,7 @@ export class Player extends Entity {
   }
 
   get staminaRatio(): number {
-    return this.stamina / STAMINA_MAX;
+    return this.stamina / this.maxStamina;
   }
 
   get isRolling(): boolean {
@@ -173,8 +199,8 @@ export class Player extends Entity {
 
     if (this.staminaRegenDelayTimer > 0) {
       this.staminaRegenDelayTimer -= delta;
-    } else if (this.stamina < STAMINA_MAX) {
-      this.stamina = Math.min(STAMINA_MAX, this.stamina + STAMINA_REGEN_RATE * delta);
+    } else if (this.stamina < this.maxStamina) {
+      this.stamina = Math.min(this.maxStamina, this.stamina + STAMINA_REGEN_RATE * delta);
     }
 
     if (this.isAttacking) {

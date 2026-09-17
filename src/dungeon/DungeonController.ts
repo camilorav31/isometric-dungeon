@@ -2,14 +2,14 @@ import * as THREE from 'three';
 import { generateDungeonGraph } from './DungeonGenerator';
 import { buildDungeon, BuiltDungeon, RuntimeRoom, getBlockerAABB } from './DungeonBuilder';
 import { DIRECTIONS } from './DungeonGenerator';
-import { Player, STAMINA_MAX } from '../entities/Player';
+import { Player } from '../entities/Player';
 import { Enemy, ENEMY_SEPARATION_RADIUS } from '../entities/Enemy';
 import { Projectile, PROJECTILE_RADIUS } from '../entities/Projectile';
 import { CameraController } from '../core/CameraController';
 import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, intersects, makeAABB, circleIntersects, attemptMove } from '../utils/collision';
-import { LOOT_TABLE, makeLootItem, SKILL_POOL } from '../state/PlayerState';
+import { rollLootItem, RARITY_LABEL, SKILL_POOL } from '../state/PlayerState';
 import { updateWallFade } from '../scene/wallFade';
 
 // Combat rooms only seal/activate once the player has cleared this margin past
@@ -191,6 +191,11 @@ export class DungeonController {
             const headPos = new THREE.Vector3();
             enemy.getHeadWorldPosition(headPos);
             this.ui.spawnDamageNumber(headPos, this.camera.camera, attack.damage, 'enemy');
+            if (!enemy.alive && !enemy.soulsAwarded) {
+              enemy.soulsAwarded = true;
+              this.player.playerState.souls += enemy.soulValue;
+              this.ui.showToast(`+${enemy.soulValue} almas`);
+            }
           }
         }
       }
@@ -324,10 +329,9 @@ export class DungeonController {
       if (Math.hypot(dx, dz) < 1.6) {
         currentRoom.treasureCollected = true;
         this.built.group.remove(currentRoom.treasureMesh);
-        const template = LOOT_TABLE[Math.floor(Math.random() * LOOT_TABLE.length)];
-        const item = makeLootItem(template);
+        const item = rollLootItem();
         this.player.playerState.addLoot(item);
-        this.ui.showToast(`+ Objeto encontrado: ${item.name}`);
+        this.ui.showToast(`+ [${RARITY_LABEL[item.rarity]}] ${item.name}`);
       } else {
         currentRoom.treasureMesh.rotation.y += delta * 1.2;
       }
@@ -362,7 +366,7 @@ export class DungeonController {
       this.player.hp,
       this.player.maxHp,
       this.player.stamina,
-      STAMINA_MAX,
+      this.player.maxStamina,
       this.player.attackReadiness,
       skillReadiness,
     );

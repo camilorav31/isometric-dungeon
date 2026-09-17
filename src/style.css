@@ -328,6 +328,14 @@ body {
   color: #e8cfcf;
 }
 
+.item-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: rgba(80, 80, 80, 0.2);
+  border-color: #4a4a4a;
+  color: #756a5c;
+}
+
 .empty-note {
   font-size: 12px;
   color: #756a5c;
@@ -403,6 +411,20 @@ body {
 
 .room-banner.visible {
   opacity: 1;
+}
+
+.souls-display {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(10, 10, 10, 0.72);
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #d1a237;
+  letter-spacing: 0.5px;
+  display: none;
 }
 
 .crosshair-hint {
