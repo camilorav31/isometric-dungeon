@@ -17,8 +17,24 @@ export class InputManager {
     domElement.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  private static readonly GAME_KEYS = new Set([
+    'KeyW',
+    'KeyA',
+    'KeyS',
+    'KeyD',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'KeyQ',
+    'KeyE',
+    'Space',
+    'Digit1',
+  ]);
+
   private onKeyDown = (e: KeyboardEvent) => {
     const code = e.code;
+    if (InputManager.GAME_KEYS.has(code)) e.preventDefault();
     if (!this.keys.has(code)) this.justPressedKeys.add(code);
     this.keys.add(code);
   };

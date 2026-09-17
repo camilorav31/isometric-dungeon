@@ -21,9 +21,20 @@ export function createFloor(width: number, depth: number, color = PALETTE.stoneD
   return mesh;
 }
 
-export function createWallSegment(width: number, height: number, depth: number, color = PALETTE.stoneLight): THREE.Mesh {
+export function createWallSegment(
+  width: number,
+  height: number,
+  depth: number,
+  color = PALETTE.stoneLight,
+  fadeable = false,
+): THREE.Mesh {
   const geo = new THREE.BoxGeometry(width, height, depth);
-  const mesh = new THREE.Mesh(geo, stdMat(color));
+  const mat = stdMat(color);
+  if (fadeable) {
+    mat.transparent = true;
+    mat.depthWrite = false;
+  }
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
@@ -141,6 +152,23 @@ export function createCharacterMesh(bodyColor: string, accentColor: string): THR
   shoulderR.position.x = 0.42;
 
   group.add(legs, torso, head, face, shoulderL, shoulderR);
+  return group;
+}
+
+export function createSwordMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.09, 0.75, 0.03),
+    new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 0.6, roughness: 0.35 }),
+  );
+  blade.position.y = 0.45;
+  blade.castShadow = true;
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.06), stdMat('#2b1a0d'));
+  guard.castShadow = true;
+  const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.22, 6), stdMat('#2b1a0d'));
+  hilt.position.y = -0.14;
+  hilt.castShadow = true;
+  group.add(blade, guard, hilt);
   return group;
 }
 

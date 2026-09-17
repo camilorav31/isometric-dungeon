@@ -7,6 +7,8 @@ import { AABB, makeAABB, attemptMove } from '../utils/collision';
 import { createChest, createFloor, createPortal, createTable, createTorch, createWallSegment, PALETTE } from '../utils/geometryFactory';
 import { openCharacterPanel, openInventoryPanel, openSkillsPanel } from '../ui/panels';
 import { PlayerState } from '../state/PlayerState';
+import { Direction } from '../dungeon/DungeonGenerator';
+import { updateWallFade } from '../scene/wallFade';
 
 const ROOM_HALF = 11;
 const WALL_HEIGHT = 4;
@@ -15,6 +17,7 @@ const WALL_THICKNESS = 1;
 export class LobbyController {
   private group: THREE.Group | null = null;
   private wallAABBs: AABB[] = [];
+  private wallMeshesByDir: Partial<Record<Direction, THREE.Mesh[]>> = {};
   private portalPos = new THREE.Vector3(0, 0, -8);
   private nearPortal = false;
 
@@ -35,18 +38,20 @@ export class LobbyController {
     const floor = createFloor(ROOM_HALF * 2 + 1, ROOM_HALF * 2 + 1, PALETTE.stoneDark);
     group.add(floor);
 
-    const wallDefs: Array<[number, number, number, number, number]> = [
-      // x, z, width(along x), depth(along z), rotationless box dims handled below
-      [0, -ROOM_HALF, ROOM_HALF * 2 + WALL_THICKNESS, WALL_THICKNESS, 0],
-      [0, ROOM_HALF, ROOM_HALF * 2 + WALL_THICKNESS, WALL_THICKNESS, 0],
-      [-ROOM_HALF, 0, WALL_THICKNESS, ROOM_HALF * 2 + WALL_THICKNESS, 0],
-      [ROOM_HALF, 0, WALL_THICKNESS, ROOM_HALF * 2 + WALL_THICKNESS, 0],
+    const wallDefs: Array<[Direction, number, number, number, number]> = [
+      // dir, x, z, width(along x), depth(along z)
+      ['N', 0, -ROOM_HALF, ROOM_HALF * 2 + WALL_THICKNESS, WALL_THICKNESS],
+      ['S', 0, ROOM_HALF, ROOM_HALF * 2 + WALL_THICKNESS, WALL_THICKNESS],
+      ['W', -ROOM_HALF, 0, WALL_THICKNESS, ROOM_HALF * 2 + WALL_THICKNESS],
+      ['E', ROOM_HALF, 0, WALL_THICKNESS, ROOM_HALF * 2 + WALL_THICKNESS],
     ];
-    for (const [x, z, w, d] of wallDefs) {
-      const wall = createWallSegment(w, WALL_HEIGHT, d);
+    this.wallMeshesByDir = {};
+    for (const [dir, x, z, w, d] of wallDefs) {
+      const wall = createWallSegment(w, WALL_HEIGHT, d, PALETTE.stoneLight, true);
       wall.position.set(x, WALL_HEIGHT / 2, z);
       group.add(wall);
       this.wallAABBs.push(makeAABB(x, z, w / 2, d / 2));
+      this.wallMeshesByDir[dir] = [wall];
     }
 
     const chest = createChest();
@@ -105,6 +110,7 @@ export class LobbyController {
       this.player.setFacingFromMovement(dir.x, dir.z);
     }
     this.player.update(delta);
+    updateWallFade(this.wallMeshesByDir, this.camera.yaw, delta, true);
 
     const dx = this.portalPos.x - this.player.position.x;
     const dz = this.portalPos.z - this.player.position.z;

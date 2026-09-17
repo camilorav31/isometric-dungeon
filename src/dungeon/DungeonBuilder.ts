@@ -28,6 +28,7 @@ export interface RuntimeRoom {
   worldZ: number;
   bounds: AABB;
   doorBlockerMeshes: Partial<Record<Direction, THREE.Mesh>>;
+  wallMeshesByDir: Partial<Record<Direction, THREE.Mesh[]>>;
   sealed: boolean;
   enemies: Enemy[];
   treasureMesh?: THREE.Group;
@@ -76,6 +77,7 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
     roomGroup.add(floor);
 
     const doorBlockerMeshes: Partial<Record<Direction, THREE.Mesh>> = {};
+    const wallMeshesByDir: Partial<Record<Direction, THREE.Mesh[]>> = {};
 
     for (const dir of DIRECTIONS) {
       const hasDoor = !!node.doors[dir];
@@ -85,14 +87,16 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
 
       if (!hasDoor) {
         if (isVertical) {
-          const wall = createWallSegment(ROOM_SIZE + WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS);
+          const wall = createWallSegment(ROOM_SIZE + WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS, PALETTE.stoneLight, true);
           wall.position.set(0, WALL_HEIGHT / 2, wallZ);
           roomGroup.add(wall);
+          wallMeshesByDir[dir] = [wall];
           staticWallAABBs.push(makeAABB(worldX, worldZ + wallZ, (ROOM_SIZE + WALL_THICKNESS) / 2, WALL_THICKNESS / 2));
         } else {
-          const wall = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE + WALL_THICKNESS);
+          const wall = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE + WALL_THICKNESS, PALETTE.stoneLight, true);
           wall.position.set(wallX, WALL_HEIGHT / 2, 0);
           roomGroup.add(wall);
+          wallMeshesByDir[dir] = [wall];
           staticWallAABBs.push(makeAABB(worldX + wallX, worldZ, WALL_THICKNESS / 2, (ROOM_SIZE + WALL_THICKNESS) / 2));
         }
         continue;
@@ -100,11 +104,12 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
 
       // Door present: two flanking segments + gap; gap filled with corridor floor + a togglable blocker.
       if (isVertical) {
-        const segA = createWallSegment(SIDE_SEGMENT_LEN, WALL_HEIGHT, WALL_THICKNESS);
+        const segA = createWallSegment(SIDE_SEGMENT_LEN, WALL_HEIGHT, WALL_THICKNESS, PALETTE.stoneLight, true);
         segA.position.set(-(DOOR_WIDTH / 2 + SIDE_SEGMENT_LEN / 2), WALL_HEIGHT / 2, wallZ);
-        const segB = createWallSegment(SIDE_SEGMENT_LEN, WALL_HEIGHT, WALL_THICKNESS);
+        const segB = createWallSegment(SIDE_SEGMENT_LEN, WALL_HEIGHT, WALL_THICKNESS, PALETTE.stoneLight, true);
         segB.position.set(DOOR_WIDTH / 2 + SIDE_SEGMENT_LEN / 2, WALL_HEIGHT / 2, wallZ);
         roomGroup.add(segA, segB);
+        wallMeshesByDir[dir] = [segA, segB];
         staticWallAABBs.push(
           makeAABB(worldX + segA.position.x, worldZ + wallZ, SIDE_SEGMENT_LEN / 2, WALL_THICKNESS / 2),
         );
@@ -123,11 +128,12 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
         roomGroup.add(blocker);
         doorBlockerMeshes[dir] = blocker;
       } else {
-        const segA = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, SIDE_SEGMENT_LEN);
+        const segA = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, SIDE_SEGMENT_LEN, PALETTE.stoneLight, true);
         segA.position.set(wallX, WALL_HEIGHT / 2, -(DOOR_WIDTH / 2 + SIDE_SEGMENT_LEN / 2));
-        const segB = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, SIDE_SEGMENT_LEN);
+        const segB = createWallSegment(WALL_THICKNESS, WALL_HEIGHT, SIDE_SEGMENT_LEN, PALETTE.stoneLight, true);
         segB.position.set(wallX, WALL_HEIGHT / 2, DOOR_WIDTH / 2 + SIDE_SEGMENT_LEN / 2);
         roomGroup.add(segA, segB);
+        wallMeshesByDir[dir] = [segA, segB];
         staticWallAABBs.push(
           makeAABB(worldX + wallX, worldZ + segA.position.z, WALL_THICKNESS / 2, SIDE_SEGMENT_LEN / 2),
         );
@@ -165,6 +171,7 @@ export function buildDungeon(graph: DungeonGraph): BuiltDungeon {
       worldZ,
       bounds: makeAABB(worldX, worldZ, HALF_ROOM, HALF_ROOM),
       doorBlockerMeshes,
+      wallMeshesByDir,
       sealed: false,
       enemies: [],
       treasureCollected: false,

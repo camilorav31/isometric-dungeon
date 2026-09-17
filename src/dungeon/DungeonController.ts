@@ -9,6 +9,11 @@ import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, intersects, makeAABB, circleIntersects, attemptMove } from '../utils/collision';
 import { LOOT_TABLE, makeLootItem } from '../state/PlayerState';
+import { updateWallFade } from '../scene/wallFade';
+
+// Combat rooms only seal/activate once the player has cleared this margin past
+// the doorway; otherwise the door blocker spawns right on top of the player.
+const ACTIVATION_MARGIN = 3;
 
 export class DungeonController {
   scene: THREE.Scene;
@@ -148,8 +153,18 @@ export class DungeonController {
     }
 
     // ---- room activation check ----
+    // Only trigger once the player has stepped well clear of the doorway, so the
+    // door blocker never spawns on top of them (which used to trap/hide the player).
     const currentRoom = this.findRoomContaining(this.player.position.x, this.player.position.z);
-    if (currentRoom && currentRoom.node.type === 'combat' && !currentRoom.activated) {
+    if (
+      currentRoom &&
+      currentRoom.node.type === 'combat' &&
+      !currentRoom.activated &&
+      this.player.position.x > currentRoom.bounds.minX + ACTIVATION_MARGIN &&
+      this.player.position.x < currentRoom.bounds.maxX - ACTIVATION_MARGIN &&
+      this.player.position.z > currentRoom.bounds.minZ + ACTIVATION_MARGIN &&
+      this.player.position.z < currentRoom.bounds.maxZ - ACTIVATION_MARGIN
+    ) {
       currentRoom.activated = true;
       const aliveEnemies = currentRoom.enemies.filter((e) => e.alive);
       if (aliveEnemies.length > 0) {
@@ -160,6 +175,12 @@ export class DungeonController {
         currentRoom.node.cleared = true;
       }
     }
+
+    // ---- fade walls facing the camera in the player's current room ----
+    for (const room of this.built.rooms.values()) {
+      updateWallFade(room.wallMeshesByDir, this.camera.yaw, delta, room === currentRoom);
+    }
+
     // ---- enemy AI + projectiles for active rooms ----
     const obstaclesForEnemies = this.getAllObstacles();
     for (const room of this.built.rooms.values()) {
