@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Entity } from '../entities/Entity';
-import { SKILL_POOL } from '../state/PlayerState';
+
+const HOTBAR_KEYS = ['1', '2', '3', 'R'];
 
 interface TrackedBar {
   entity: Entity;
@@ -18,6 +19,7 @@ export class UIManager {
   private hudStaminaInner: HTMLDivElement;
   private hudAttackCdInner: HTMLDivElement;
   private hudSkillSlots: HTMLDivElement[];
+  private hudSkillLabels: HTMLDivElement[];
   private damageNumberLayer: HTMLDivElement;
   private minimapCanvas: HTMLCanvasElement;
   private minimapCtx: CanvasRenderingContext2D;
@@ -41,10 +43,10 @@ export class UIManager {
     this.damageNumberLayer = document.createElement('div');
     root.appendChild(this.damageNumberLayer);
 
-    const skillSlotsHtml = SKILL_POOL.map(
-      (skill, i) => `
+    const skillSlotsHtml = HOTBAR_KEYS.map(
+      (key, i) => `
         <div class="hud-skill-slot">
-          <div class="hud-skill-slot-label">[${i + 1}] ${skill.name}</div>
+          <div class="hud-skill-slot-label" id="hud-skill-label-${i}">[${key}] —</div>
           <div class="cd-overlay" id="hud-skill-cd-${i}"></div>
         </div>`,
     ).join('');
@@ -64,7 +66,8 @@ export class UIManager {
     this.hudHpInner = this.hudFrame.querySelector('#hud-hp-inner')!;
     this.hudStaminaInner = this.hudFrame.querySelector('#hud-stamina-inner')!;
     this.hudAttackCdInner = this.hudFrame.querySelector('#hud-attack-cd')!;
-    this.hudSkillSlots = SKILL_POOL.map((_, i) => this.hudFrame.querySelector(`#hud-skill-cd-${i}`)!);
+    this.hudSkillSlots = HOTBAR_KEYS.map((_, i) => this.hudFrame.querySelector(`#hud-skill-cd-${i}`)!);
+    this.hudSkillLabels = HOTBAR_KEYS.map((_, i) => this.hudFrame.querySelector(`#hud-skill-label-${i}`)!);
     this.hudFrame.style.display = 'none';
 
     this.interactPrompt = document.createElement('div');
@@ -94,7 +97,7 @@ export class UIManager {
     const hint = document.createElement('div');
     hint.className = 'crosshair-hint';
     hint.innerHTML =
-      'WASD mover · Click/Espacio atacar · Shift rodar<br/>1-2-3 habilidades · Q/E rotar cámara · Click derecho arrastrar · Scroll zoom';
+      'WASD mover · Click/Espacio atacar · Shift rodar<br/>1-2-3-R habilidades · Q/E rotar cámara · Click derecho arrastrar · Scroll zoom · F1 modo DEV';
     root.appendChild(hint);
 
     this.soulsDisplay = document.createElement('div');
@@ -159,7 +162,15 @@ export class UIManager {
     }
   }
 
-  updateHUD(hp: number, maxHp: number, stamina: number, maxStamina: number, attackReadiness: number, skillReadiness: number[]) {
+  updateHUD(
+    hp: number,
+    maxHp: number,
+    stamina: number,
+    maxStamina: number,
+    attackReadiness: number,
+    skillReadiness: number[],
+    skillLabels?: string[],
+  ) {
     const hpPct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     this.hudHpInner.style.width = `${hpPct}%`;
     const staminaPct = Math.max(0, Math.min(100, (stamina / maxStamina) * 100));
@@ -169,6 +180,12 @@ export class UIManager {
       const slot = this.hudSkillSlots[i];
       if (slot) slot.style.height = `${(1 - Math.max(0, Math.min(1, readiness))) * 100}%`;
     });
+    if (skillLabels) {
+      skillLabels.forEach((label, i) => {
+        const el = this.hudSkillLabels[i];
+        if (el) el.textContent = `[${HOTBAR_KEYS[i]}] ${label}`;
+      });
+    }
   }
 
   // ---------- floating damage numbers ----------
@@ -266,6 +283,7 @@ export class UIManager {
   // ---------- generic panel ----------
 
   showPanel(title: string, bodyHtml: string, onClose: () => void, wireUp?: (panelEl: HTMLElement) => void) {
+    const prevScrollTop = this.panelOverlay.querySelector('.panel-box')?.scrollTop ?? 0;
     this.panelOverlay.classList.remove('hidden');
     this.panelOverlay.innerHTML = '';
     const box = document.createElement('div');
@@ -275,6 +293,7 @@ export class UIManager {
       <div class="panel-body">${bodyHtml}</div>
     `;
     this.panelOverlay.appendChild(box);
+    box.scrollTop = prevScrollTop;
     box.querySelector('.close-btn')!.addEventListener('click', () => {
       this.hidePanel();
       onClose();

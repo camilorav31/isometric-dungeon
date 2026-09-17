@@ -79,7 +79,7 @@ export class Player extends Entity {
   /** Rebuilds the held weapon mesh to match the currently equipped weapon (or the bare default). */
   refreshWeaponVisual() {
     this.swordPivot.remove(this.weaponMesh);
-    const weapon = this.playerState.equipped.weapon;
+    const weapon = this.playerState.equipped.mainHand;
     const kind = weapon?.weaponVisual ?? 'sword';
     const color = weapon ? BLADE_COLOR_BY_RARITY[weapon.rarity] : BLADE_COLOR_BY_RARITY.common;
     this.weaponMesh = createWeaponMesh(kind, color);

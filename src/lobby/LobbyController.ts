@@ -5,7 +5,7 @@ import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, makeAABB, attemptMove } from '../utils/collision';
 import { createChest, createFloor, createPortal, createTable, createTorch, createWallSegment, PALETTE } from '../utils/geometryFactory';
-import { openCharacterPanel, openInventoryPanel, openSkillsPanel, openUpgradesPanel } from '../ui/panels';
+import { openBankPanel, openCharacterPanel, openUpgradesPanel } from '../ui/panels';
 import { PlayerState } from '../state/PlayerState';
 import { Direction } from '../dungeon/DungeonGenerator';
 import { updateWallFade } from '../scene/wallFade';
@@ -23,6 +23,8 @@ export class LobbyController {
   private elapsed = 0;
   private portalPos = new THREE.Vector3(0, 0, -8);
   private nearPortal = false;
+  private chestPos = new THREE.Vector3(-7, 0, -7);
+  private nearChest = false;
 
   constructor(
     private scene: THREE.Scene,
@@ -58,7 +60,7 @@ export class LobbyController {
     }
 
     const chest = createChest();
-    chest.position.set(-7, 0, -7);
+    chest.position.copy(this.chestPos);
     chest.rotation.y = Math.PI / 4;
     group.add(chest);
 
@@ -93,12 +95,15 @@ export class LobbyController {
 
   private setupMenu() {
     this.ui.setLobbyMenu([
-      { label: 'Personaje', onClick: () => openCharacterPanel(this.ui, this.playerState) },
-      { label: 'Inventario', onClick: () => openInventoryPanel(this.ui, this.playerState, this.player) },
-      { label: 'Habilidades', onClick: () => openSkillsPanel(this.ui) },
+      { label: 'Personaje', onClick: () => openCharacterPanel(this.ui, this.playerState, this.player) },
       { label: 'Mejoras', onClick: () => openUpgradesPanel(this.ui, this.playerState, this.player) },
     ]);
     this.ui.showSoulsDisplay(true);
+  }
+
+  /** Snapshot of debug data for the DEV-mode hitbox overlay + info panel. */
+  getDevOverlayInfo() {
+    return { walls: this.wallAABBs, rooms: [], enemies: [], traps: [], roomLabel: 'lobby', enemyCount: 0, projectileCount: 0, particleCount: 0 };
   }
 
   teardown() {
@@ -127,10 +132,25 @@ export class LobbyController {
     const dx = this.portalPos.x - this.player.position.x;
     const dz = this.portalPos.z - this.player.position.z;
     this.nearPortal = Math.hypot(dx, dz) < 2.6;
-    this.ui.setInteractPrompt(this.nearPortal ? '[E] Entrar a la mazmorra' : null);
 
-    if (this.nearPortal && this.input.wasJustPressed('KeyE')) {
-      this.onEnterDungeon();
+    const cdx = this.chestPos.x - this.player.position.x;
+    const cdz = this.chestPos.z - this.player.position.z;
+    this.nearChest = Math.hypot(cdx, cdz) < 2.4;
+
+    if (this.nearPortal) {
+      this.ui.setInteractPrompt('[E] Entrar a la mazmorra');
+    } else if (this.nearChest) {
+      this.ui.setInteractPrompt('[E] Abrir banco');
+    } else {
+      this.ui.setInteractPrompt(null);
+    }
+
+    if (this.input.wasJustPressed('KeyE')) {
+      if (this.nearPortal) {
+        this.onEnterDungeon();
+      } else if (this.nearChest) {
+        openBankPanel(this.ui, this.playerState);
+      }
     }
   }
 }

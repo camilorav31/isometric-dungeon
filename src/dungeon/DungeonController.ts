@@ -10,7 +10,7 @@ import { CameraController } from '../core/CameraController';
 import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, intersects, makeAABB, circleIntersects, attemptMove } from '../utils/collision';
-import { rollLootItem, RARITY_LABEL, SKILL_POOL } from '../state/PlayerState';
+import { rollAnyDrop, RARITY_LABEL, RARITY_COOLDOWN_MULT, isRuneDef, skillById, RuneDef } from '../state/PlayerState';
 import { updateWallFade } from '../scene/wallFade';
 import { updateTorchFlicker } from '../scene/torchFlicker';
 import { ParticleBurst } from '../scene/particles';
@@ -131,6 +131,41 @@ export class DungeonController {
     this.particleBursts = [];
   }
 
+  /** Snapshot of debug data for the DEV-mode hitbox overlay + info panel. */
+  getDevOverlayInfo() {
+    if (!this.built) {
+      return { walls: [], rooms: [], enemies: [], traps: [], roomLabel: '—', enemyCount: 0, projectileCount: 0, particleCount: 0 };
+    }
+    const walls = [...this.built.staticWallAABBs];
+    for (const room of this.built.rooms.values()) {
+      for (const dir of DIRECTIONS) {
+        if (room.doorBlockerMeshes[dir]) walls.push(getBlockerAABB(room, dir));
+      }
+    }
+    const rooms = [...this.built.rooms.values()].map((r) => r.bounds);
+    const enemies: AABB[] = [];
+    let enemyCount = 0;
+    for (const room of this.built.rooms.values()) {
+      for (const enemy of room.enemies) {
+        if (!enemy.alive) continue;
+        enemies.push(enemy.getAABB());
+        enemyCount += 1;
+      }
+    }
+    const traps = this.built.traps.map((t) => makeAABB(t.group.position.x, t.group.position.z, 0.5, 0.5));
+    const currentRoom = this.findRoomContaining(this.player.position.x, this.player.position.z);
+    return {
+      walls,
+      rooms,
+      enemies,
+      traps,
+      roomLabel: currentRoom ? currentRoom.node.type : '—',
+      enemyCount,
+      projectileCount: this.projectiles.length,
+      particleCount: this.particleBursts.length,
+    };
+  }
+
   private spawnBurst(position: THREE.Vector3, color: string, count = 8, speed = 3) {
     if (!this.built) return;
     const burst = new ParticleBurst(position, color, count, speed);
@@ -183,8 +218,8 @@ export class DungeonController {
     updateTorchFlicker(this.built.torchLights, this.elapsed);
 
     this.player.update(delta);
-    for (let i = 0; i < this.skillCooldowns.length; i++) {
-      if (this.skillCooldowns[i] > 0) this.skillCooldowns[i] -= delta;
+    for (const key of Object.keys(this.skillCooldowns)) {
+      if (this.skillCooldowns[key] > 0) this.skillCooldowns[key] -= delta;
     }
 
     // ---- player movement (camera-relative) ----
@@ -243,10 +278,11 @@ export class DungeonController {
       }
     }
 
-    // ---- skill activation (hotbar slots 1/2/3) ----
+    // ---- skill activation (rune hotbar: 3 basic slots + 1 ulti slot) ----
     if (this.input.wasJustPressed('Digit1')) this.tryUseSkill(0);
     if (this.input.wasJustPressed('Digit2')) this.tryUseSkill(1);
     if (this.input.wasJustPressed('Digit3')) this.tryUseSkill(2);
+    if (this.input.wasJustPressed('KeyR')) this.tryUseSkill('ulti');
 
     // ---- room activation check ----
     // Only trigger once the player has stepped well clear of the doorway, so the
@@ -427,9 +463,9 @@ export class DungeonController {
       if (Math.hypot(dx, dz) < 1.6) {
         currentRoom.treasureCollected = true;
         this.built.group.remove(currentRoom.treasureMesh);
-        const item = rollLootItem();
-        this.player.playerState.addLoot(item);
-        this.ui.showToast(`+ [${RARITY_LABEL[item.rarity]}] ${item.name}`);
+        const drop = rollAnyDrop();
+        this.player.playerState.addLoot(drop);
+        this.ui.showToast(`+ [${RARITY_LABEL[drop.rarity]}] ${drop.name}`);
       } else {
         currentRoom.treasureMesh.rotation.y += delta * 1.2;
       }
@@ -486,9 +522,20 @@ export class DungeonController {
     }));
     this.ui.updateMinimap(minimapRooms);
 
-    const skillReadiness = SKILL_POOL.map(
-      (skill, i) => 1 - THREE.MathUtils.clamp(this.skillCooldowns[i] / skill.cooldown, 0, 1),
-    );
+    const runeSlots: Array<{ key: string; rune: RuneDef | null }> = [
+      { key: '0', rune: this.player.playerState.equippedRunes.basic[0] },
+      { key: '1', rune: this.player.playerState.equippedRunes.basic[1] },
+      { key: '2', rune: this.player.playerState.equippedRunes.basic[2] },
+      { key: 'ulti', rune: this.player.playerState.equippedRunes.ulti },
+    ];
+    const skillReadiness = runeSlots.map(({ key, rune }) => {
+      if (!rune) return 1;
+      const skill = skillById(rune.skillId);
+      if (!skill) return 1;
+      const cooldown = skill.cooldown * RARITY_COOLDOWN_MULT[rune.rarity];
+      return 1 - THREE.MathUtils.clamp((this.skillCooldowns[key] ?? 0) / cooldown, 0, 1);
+    });
+    const skillLabels = runeSlots.map(({ rune }) => (rune ? skillById(rune.skillId)?.name ?? rune.name : '—'));
     this.ui.updateHUD(
       this.player.hp,
       this.player.maxHp,
@@ -496,18 +543,24 @@ export class DungeonController {
       this.player.maxStamina,
       this.player.attackReadiness,
       skillReadiness,
+      skillLabels,
     );
   }
 
-  private skillCooldowns = [0, 0, 0];
-  private tryUseSkill(slot: number) {
-    const skill = SKILL_POOL[slot];
+  private skillCooldowns: Record<string, number> = { '0': 0, '1': 0, '2': 0, ulti: 0 };
+  private tryUseSkill(slot: number | 'ulti') {
+    const state = this.player.playerState;
+    const rune = slot === 'ulti' ? state.equippedRunes.ulti : state.equippedRunes.basic[slot];
+    if (!rune) return;
+    const skill = skillById(rune.skillId);
     if (!skill) return;
-    if (this.skillCooldowns[slot] > 0) {
+    const key = String(slot);
+    const cooldown = skill.cooldown * RARITY_COOLDOWN_MULT[rune.rarity];
+    if ((this.skillCooldowns[key] ?? 0) > 0) {
       this.ui.showToast('Habilidad en enfriamiento');
       return;
     }
-    this.skillCooldowns[slot] = skill.cooldown;
+    this.skillCooldowns[key] = cooldown;
     if (skill.id === 'power_strike') {
       this.player.queueDoubleDamageNextAttack();
       this.ui.showToast('¡Golpe Poderoso listo!');
@@ -517,6 +570,27 @@ export class DungeonController {
     } else if (skill.id === 'swift_step') {
       this.player.applySpeedBoost(1.7, 4);
       this.ui.showToast('¡Paso Veloz!');
+    } else if (skill.id === 'ancestral_wrath') {
+      const RADIUS = 5;
+      let hits = 0;
+      for (const room of this.built!.rooms.values()) {
+        for (const enemy of room.enemies) {
+          if (!enemy.alive) continue;
+          const dx = enemy.position.x - this.player.position.x;
+          const dz = enemy.position.z - this.player.position.z;
+          if (Math.hypot(dx, dz) > RADIUS) continue;
+          enemy.takeDamage(this.player.playerState.damage * 1.5);
+          enemy.triggerFlash(0xffffff, 0.2);
+          enemy.applyKnockback(dx, dz, PLAYER_HIT_KNOCKBACK * 1.5);
+          hits += 1;
+          if (!enemy.alive && !enemy.soulsAwarded) {
+            enemy.soulsAwarded = true;
+            this.player.playerState.souls += enemy.soulValue;
+          }
+        }
+      }
+      this.camera.shake(0.3, 0.2);
+      this.ui.showToast(hits > 0 ? `¡Ira Ancestral! (${hits} enemigos golpeados)` : '¡Ira Ancestral!');
     }
   }
 }

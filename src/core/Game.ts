@@ -7,6 +7,7 @@ import { PlayerState } from '../state/PlayerState';
 import { Player } from '../entities/Player';
 import { LobbyController } from '../lobby/LobbyController';
 import { DungeonController } from '../dungeon/DungeonController';
+import { DevMode } from './DevMode';
 
 type Mode = 'LOBBY' | 'DUNGEON';
 
@@ -30,6 +31,7 @@ export class Game {
   private currentFloor = 1;
 
   private moonLight!: THREE.DirectionalLight;
+  private devMode: DevMode;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = createRenderer(canvas);
@@ -64,6 +66,8 @@ export class Game {
       () => this.onPlayerDied(),
       () => this.descendToNextFloor(),
     );
+
+    this.devMode = new DevMode(this.scene, uiRoot);
 
     window.addEventListener('resize', this.onResize);
 
@@ -131,12 +135,19 @@ export class Game {
 
     this.camera.handleInput(this.input, delta);
 
+    if (this.input.wasJustPressed('F1')) this.devMode.toggle();
+    if (this.devMode.enabled && this.input.wasJustPressed('KeyG')) this.devMode.toggleGodMode();
+
     if (!this.paused) {
       if (this.mode === 'LOBBY') {
         this.lobby.update(delta);
       } else {
         this.dungeon.update(delta);
       }
+    }
+
+    if (this.devMode.godMode && this.mode === 'DUNGEON') {
+      this.player.hp = this.player.maxHp;
     }
 
     this.camera.update(this.player.group.position, delta);
@@ -146,6 +157,11 @@ export class Game {
     this.moonLight.target.updateMatrixWorld();
 
     this.ui.updateHealthBars(this.camera.camera, window.innerWidth, window.innerHeight);
+
+    if (this.devMode.enabled) {
+      const overlayInfo = this.mode === 'LOBBY' ? this.lobby.getDevOverlayInfo() : this.dungeon.getDevOverlayInfo();
+      this.devMode.update(delta, overlayInfo, this.player.getAABB(), this.player.group.position);
+    }
 
     this.renderer.render(this.scene, this.camera.camera);
     this.input.endFrame();
