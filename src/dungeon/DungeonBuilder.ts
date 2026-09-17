@@ -182,6 +182,8 @@ export function buildDungeon(graph: DungeonGraph, difficultyMultiplier = 1): Bui
     // Corner torches for ambience.
     const torchOffsets: [number, number][] = [
       [-HALF_ROOM + 0.6, -HALF_ROOM + 0.6],
+      [HALF_ROOM - 0.6, -HALF_ROOM + 0.6],
+      [-HALF_ROOM + 0.6, HALF_ROOM - 0.6],
       [HALF_ROOM - 0.6, HALF_ROOM - 0.6],
     ];
     for (const [tx, tz] of torchOffsets) {

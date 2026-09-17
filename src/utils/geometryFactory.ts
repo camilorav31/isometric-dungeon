@@ -153,22 +153,47 @@ export function createTable(): THREE.Group {
   return group;
 }
 
+/** A freestanding stone archway with a glowing vertical veil — walked through, not stepped onto. */
 export function createPortal(color = PALETTE.loot): THREE.Group {
   const group = new THREE.Group();
+  const frameMat = stdMat(PALETTE.stoneLight);
+
+  const postGeo = new THREE.BoxGeometry(0.4, 3, 0.45);
+  const postL = new THREE.Mesh(postGeo, frameMat);
+  postL.position.set(-1.15, 1.5, 0);
+  postL.castShadow = true;
+  postL.receiveShadow = true;
+  const postR = postL.clone();
+  postR.position.x = 1.15;
+  group.add(postL, postR);
+
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.4, 0.45), frameMat);
+  lintel.position.set(0, 3.05, 0);
+  lintel.castShadow = true;
+  group.add(lintel);
+
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1.1, 0.15, 8, 24),
-    new THREE.MeshStandardMaterial({ color: PALETTE.stoneLight, roughness: 0.8 }),
+    new THREE.TorusGeometry(0.95, 0.12, 8, 24),
+    new THREE.MeshStandardMaterial({ color: PALETTE.stoneDark, roughness: 0.8 }),
   );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 1.1;
+  ring.position.y = 1.5;
   ring.castShadow = true;
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(0.95, 24),
-    new THREE.MeshStandardMaterial({ color, emissive: new THREE.Color(color), emissiveIntensity: 0.6, side: THREE.DoubleSide }),
+  group.add(ring);
+
+  const veil = new THREE.Mesh(
+    new THREE.CircleGeometry(0.85, 24),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: new THREE.Color(color),
+      emissiveIntensity: 0.7,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+    }),
   );
-  disc.rotation.x = Math.PI / 2;
-  disc.position.y = 1.1;
-  group.add(ring, disc);
+  veil.position.y = 1.5;
+  group.add(veil);
+
   return group;
 }
 
