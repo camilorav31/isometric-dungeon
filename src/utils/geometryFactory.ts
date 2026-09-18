@@ -9,8 +9,22 @@ export const PALETTE = {
   loot: '#2d6b3d',
 };
 
-function stdMat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
+export function stdMat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, ...opts });
+}
+
+/** Geometry cache, keyed by a caller-chosen string. Safe to share across every
+ * character instance (player/enemies/viewport) since gameplay code never mutates
+ * geometry at runtime — only materials get tinted (see the flash-safety note by
+ * `createCharacterMesh`), so geometry is where cross-instance reuse is actually safe. */
+const geometryCache = new Map<string, THREE.BufferGeometry>();
+function sharedGeo<T extends THREE.BufferGeometry>(key: string, build: () => T): T {
+  let geo = geometryCache.get(key) as T | undefined;
+  if (!geo) {
+    geo = build();
+    geometryCache.set(key, geo);
+  }
+  return geo;
 }
 
 export function createFloor(width: number, depth: number, color = PALETTE.stoneDark): THREE.Mesh {
@@ -372,22 +386,47 @@ export function createFacingMarker(color: string): THREE.Group {
 }
 
 // ---------- player/enemy character rig ----------
-// Proportions are fractions of a fixed reference height H = 1.80: legs 33.3%,
-// torso 37.8%, neck 2.2%, head 26.7% (see the character-design plan). The arm
-// is a 2-segment chain (upper arm + forearm) hanging from a shoulder pivot at
-// the TOP of the torso, verified by direct kinematics so the hand socket
-// clears the torso's silhouette instead of sitting inside it as it used to.
-const LEG_H = 0.6;
-const TORSO_H = 0.68;
-const NECK_H = 0.04;
-const HEAD_D = 0.48;
+// Proportions are fractions of a fixed reference height H = 1.80 (see the
+// character-quality plan). Part heights sum to ~1.71H, leaving the same small
+// headroom margin above the head the old proportions already had — nothing
+// else in the codebase requires the mesh to touch y=1.80 exactly (the HP-bar
+// anchor in Entity.ts already floats at a fixed +2.05 offset regardless).
+// Head was cut from 26.7%H to 17.2%H and shoulder half-width from 46.7%H total
+// to 30%H total to match the stylized-fantasy reference this iteration
+// targets (a normal-proportioned ~6-7-heads-tall figure, not an oversized-head
+// prototype) — both are zero-triangle-cost changes with an outsized visual
+// payoff. The arm is still a 2-segment chain (upper arm + forearm) hanging
+// from a shoulder pivot at the top of the torso, verified by direct
+// kinematics in the previous iteration; that math is untouched here.
+const BOOT_H = 0.22;
+const LEG_H = 0.38;
+const WAIST_H = 0.14;
+const TORSO_H = 0.6;
+const NECK_H = 0.06;
+const HEAD_D = 0.31;
 const HEAD_R = HEAD_D / 2;
 
-const TORSO_Y = LEG_H + TORSO_H / 2; // 0.94
-const NECK_Y = LEG_H + TORSO_H + NECK_H / 2; // 1.30
-const HEAD_Y = LEG_H + TORSO_H + NECK_H + HEAD_R; // 1.56
-const SHOULDER_Y = LEG_H + TORSO_H; // 1.28
-const SHOULDER_X = 0.42;
+const BOOT_Y = BOOT_H / 2;
+const LEG_Y = BOOT_H + LEG_H / 2;
+const WAIST_Y = BOOT_H + LEG_H + WAIST_H / 2;
+const BELT_Y = BOOT_H + LEG_H + WAIST_H;
+const TORSO_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H / 2;
+const NECK_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H + NECK_H / 2;
+const HEAD_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H + NECK_H + HEAD_R;
+const SHOULDER_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H;
+const SHOULDER_X = 0.27;
+/** Half-gap between the two legs' own centerlines — the previous prototype
+ * fused both legs into a single box, which read as a pedestal rather than a
+ * pair of legs from any camera angle. */
+const LEG_X = 0.13;
+
+/** Darkens/lightens a hex color by a linear-space factor — used so parts that
+ * don't take their own color parameter (e.g. the waist/hip flare) still
+ * harmonize with whatever `bodyColor` a given character/enemy type uses,
+ * instead of a hardcoded tone that would clash with some of them. */
+function shade(hex: string, factor: number): string {
+  return `#${new THREE.Color(hex).multiplyScalar(factor).getHexString()}`;
+}
 
 export const UPPER_ARM_LEN = 0.33;
 export const FOREARM_LEN = 0.26;
@@ -423,14 +462,37 @@ export interface CharacterRig {
   leftHand: THREE.Group;
   rightForearmMount: THREE.Group;
   leftForearmMount: THREE.Group;
+  /** Empty anchors for future equipment, additive to the joints above — see
+   * the character-quality plan's socket table. Zero render cost (no geometry). */
+  headSocket: THREE.Group;
+  torsoSocket: THREE.Group;
+  backSocket: THREE.Group;
+  waistSocket: THREE.Group;
+  feetSocket: THREE.Group;
 }
 
-function buildArm(side: 1 | -1, accentColor: string) {
+/** Side-count choices below aren't uniform on purpose: a regular n-gon prism's
+ * silhouette width swings between a face-on and corner-on camera view by a
+ * factor of 1/cos(pi/n) as the (free-rotating, isometric) camera yaws around
+ * it — 41% for a 4-sided box, 15% for 6 sides, 8% for 8 sides. Small parts
+ * (forearm/upper-arm/neck/shoulder cap) use 6 sides since the remaining wobble
+ * beyond that is usually sub-pixel at gameplay camera distance anyway; larger,
+ * more central parts (torso/waist/thigh) use 8 since they're big enough on
+ * screen for the extra facets to actually read, and the head uses an
+ * icosahedron (no UV-sphere pole pinching at any yaw angle at all). */
+function buildArm(side: 1 | -1, armMat: THREE.MeshStandardMaterial) {
   const shoulder = new THREE.Group();
   shoulder.position.set(SHOULDER_X * side, SHOULDER_Y, 0);
   shoulder.rotation.x = SHOULDER_LEAN;
 
-  const upperArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, UPPER_ARM_LEN, 0.18), stdMat(accentColor));
+  const shoulderCapGeo = sharedGeo('shoulder-cap-6', () => new THREE.CylinderGeometry(0.12, 0.15, 0.09, 6));
+  const shoulderCap = new THREE.Mesh(shoulderCapGeo, armMat);
+  shoulderCap.position.y = 0.02; // sits right at the joint, slightly overlapping the torso's shoulder line
+  shoulderCap.castShadow = true;
+  shoulder.add(shoulderCap);
+
+  const upperArmGeo = sharedGeo('limb-upperArm-6', () => new THREE.CylinderGeometry(0.085, 0.095, UPPER_ARM_LEN, 6));
+  const upperArm = new THREE.Mesh(upperArmGeo, armMat);
   upperArm.position.y = -UPPER_ARM_LEN / 2;
   upperArm.castShadow = true;
   shoulder.add(upperArm);
@@ -440,7 +502,8 @@ function buildArm(side: 1 | -1, accentColor: string) {
   elbow.rotation.x = ELBOW_BEND_REST;
   shoulder.add(elbow);
 
-  const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.16, FOREARM_LEN, 0.16), stdMat(accentColor));
+  const forearmGeo = sharedGeo('limb-forearm-6', () => new THREE.CylinderGeometry(0.07, 0.085, FOREARM_LEN, 6));
+  const forearm = new THREE.Mesh(forearmGeo, armMat);
   forearm.position.y = -FOREARM_LEN / 2;
   forearm.castShadow = true;
   elbow.add(forearm);
@@ -458,29 +521,93 @@ function buildArm(side: 1 | -1, accentColor: string) {
   return { shoulder, elbow, hand, forearmMount };
 }
 
+/** Builds the shared low-poly body. Geometry is deduped across every character
+ * instance via `sharedGeo` (safe — never mutated at runtime); materials are
+ * still created fresh per call but deduped *within* this one character's own
+ * parts (e.g. one `armMat` for both arms' 6 meshes) — NOT shared across
+ * characters, because `Entity.triggerFlash` mutates `material.emissive`
+ * directly on whatever it finds by traversing one entity's own group, and a
+ * cross-instance-shared material would make every character sharing it flash
+ * together. See the character-quality plan for the full reasoning. */
 export function createCharacterMesh(bodyColor: string, accentColor: string): CharacterRig {
   const group = new THREE.Group();
 
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, LEG_H, 0.35), stdMat('#2a2320'));
-  legs.position.y = LEG_H / 2;
-  legs.castShadow = true;
+  const skinMat = stdMat('#c9a882');
+  const legMat = stdMat('#2a2320');
+  const bootMat = stdMat('#4a3320');
+  const darkMat = stdMat('#2b1a0d'); // belt + eyes — same dark leather/shadow tone, one fewer unique material
+  const armMat = stdMat(accentColor);
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, TORSO_H, 0.4), stdMat(bodyColor));
+  const legGeo = sharedGeo('leg-6', () => new THREE.CylinderGeometry(0.11, 0.13, LEG_H, 6));
+  const legL = new THREE.Mesh(legGeo, legMat);
+  legL.position.set(-LEG_X, LEG_Y, 0);
+  legL.castShadow = true;
+  const legR = new THREE.Mesh(legGeo, legMat);
+  legR.position.set(LEG_X, LEG_Y, 0);
+  legR.castShadow = true;
+
+  const bootGeo = sharedGeo('boot-6', () => new THREE.CylinderGeometry(0.14, 0.12, BOOT_H, 6));
+  const bootL = new THREE.Mesh(bootGeo, bootMat);
+  bootL.position.set(-LEG_X, BOOT_Y, 0);
+  bootL.scale.z = 1.2; // feet read longer front-to-back than side-to-side
+  bootL.castShadow = true;
+  const bootR = new THREE.Mesh(bootGeo, bootMat);
+  bootR.position.set(LEG_X, BOOT_Y, 0);
+  bootR.scale.z = 1.2;
+  bootR.castShadow = true;
+
+  const waistGeo = sharedGeo('waist-8', () => new THREE.CylinderGeometry(0.21, 0.3, WAIST_H, 8));
+  const waist = new THREE.Mesh(waistGeo, stdMat(shade(bodyColor, 0.7)));
+  waist.position.y = WAIST_Y;
+  waist.scale.z = 0.8;
+  waist.castShadow = true;
+
+  const beltGeo = sharedGeo('belt-8', () => new THREE.CylinderGeometry(0.225, 0.225, 0.06, 8));
+  const belt = new THREE.Mesh(beltGeo, darkMat);
+  belt.position.y = BELT_Y - 0.02;
+  belt.scale.z = 0.85;
+  belt.castShadow = true;
+
+  const torsoGeo = sharedGeo('torso-8', () => new THREE.CylinderGeometry(0.27, 0.21, TORSO_H, 8));
+  const torso = new THREE.Mesh(torsoGeo, stdMat(bodyColor));
   torso.position.y = TORSO_Y;
+  torso.scale.z = 0.75; // oval cross-section: chest reads wider than deep
   torso.castShadow = true;
 
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.16, NECK_H, 0.16), stdMat('#c9a882'));
+  const neckGeo = sharedGeo('neck-6', () => new THREE.CylinderGeometry(0.09, 0.1, NECK_H, 6));
+  const neck = new THREE.Mesh(neckGeo, skinMat);
   neck.position.y = NECK_Y;
   neck.castShadow = true;
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R, 8, 8), stdMat('#c9a882'));
+  const headGeo = sharedGeo('head-ico1', () => new THREE.IcosahedronGeometry(HEAD_R, 1));
+  const head = new THREE.Mesh(headGeo, skinMat);
   head.position.y = HEAD_Y;
   head.castShadow = true;
 
-  const right = buildArm(1, accentColor);
-  const left = buildArm(-1, accentColor);
+  const eyeGeo = sharedGeo('eye', () => new THREE.BoxGeometry(0.045, 0.035, 0.02));
+  const eyeL = new THREE.Mesh(eyeGeo, darkMat);
+  eyeL.position.set(-0.06, 0.01, HEAD_R * 0.92);
+  const eyeR = new THREE.Mesh(eyeGeo, darkMat);
+  eyeR.position.set(0.06, 0.01, HEAD_R * 0.92);
+  head.add(eyeL, eyeR);
 
-  group.add(legs, torso, neck, head, right.shoulder, left.shoulder);
+  const right = buildArm(1, armMat);
+  const left = buildArm(-1, armMat);
+
+  group.add(legL, legR, bootL, bootR, waist, belt, torso, neck, head, right.shoulder, left.shoulder);
+
+  const headSocket = new THREE.Group();
+  headSocket.position.y = HEAD_Y;
+  const torsoSocket = new THREE.Group();
+  torsoSocket.position.y = TORSO_Y;
+  const backSocket = new THREE.Group();
+  backSocket.position.set(0, TORSO_Y, -0.25);
+  const waistSocket = new THREE.Group();
+  waistSocket.position.y = BELT_Y;
+  const feetSocket = new THREE.Group();
+  feetSocket.position.y = 0;
+  group.add(headSocket, torsoSocket, backSocket, waistSocket, feetSocket);
+
   return {
     group,
     rightShoulder: right.shoulder,
@@ -489,6 +616,11 @@ export function createCharacterMesh(bodyColor: string, accentColor: string): Cha
     leftHand: left.hand,
     rightForearmMount: right.forearmMount,
     leftForearmMount: left.forearmMount,
+    headSocket,
+    torsoSocket,
+    backSocket,
+    waistSocket,
+    feetSocket,
   };
 }
 
@@ -531,10 +663,10 @@ export function createWeaponMesh(kind: WeaponVisual = 'sword', bladeColor = '#c9
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.55, 6), stdMat('#3d2817'));
     handle.position.y = 0.3;
     handle.castShadow = true;
-    const head = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.32, 4), bladeMat);
-    head.position.set(0, 0.58, 0);
-    head.rotation.z = Math.PI / 2;
-    head.rotation.y = Math.PI / 4;
+    // A flat wedge reads as an axe-blade silhouette; the previous 4-sided
+    // cone read as a spike instead — same triangle cost, right primitive.
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.05), bladeMat);
+    head.position.set(0, 0.56, 0.1);
     head.castShadow = true;
     group.add(handle, head);
   } else {
@@ -545,6 +677,28 @@ export function createWeaponMesh(kind: WeaponVisual = 'sword', bladeColor = '#c9
     guard.castShadow = true;
     group.add(blade, guard);
   }
+
+  return group;
+}
+
+/** A round shield: a faceted disc (10 sides — matches the "8-12 sides, not a
+ * smooth circle" ask) plus a small faceted boss, exported so it's a shared
+ * shape any future Player/Enemy offhand can mount too, not just the
+ * character-sheet viewport it replaces here. */
+export function createShieldMesh(bodyColor: string, rimColor: string): THREE.Group {
+  const group = new THREE.Group();
+
+  const bodyGeo = sharedGeo('shield-disc-10', () => new THREE.CylinderGeometry(0.26, 0.26, 0.06, 10));
+  const body = new THREE.Mesh(bodyGeo, stdMat(bodyColor));
+  body.rotation.z = Math.PI / 2; // stand the disc on edge, flat face pointing sideways (worn on the forearm)
+  body.castShadow = true;
+  group.add(body);
+
+  const bossGeo = sharedGeo('shield-boss', () => new THREE.OctahedronGeometry(0.07, 0));
+  const boss = new THREE.Mesh(bossGeo, stdMat(rimColor, { metalness: 0.5, roughness: 0.4 }));
+  boss.position.x = 0.035;
+  boss.castShadow = true;
+  group.add(boss);
 
   return group;
 }

@@ -86,6 +86,7 @@ export class DevMode {
 
   constructor(
     private scene: THREE.Scene,
+    private renderer: THREE.WebGLRenderer,
     uiRoot: HTMLElement,
     private playerState: PlayerState,
     private lights: DevLights,
@@ -361,6 +362,7 @@ export class DevMode {
       this.fpsFrames = 0;
     }
 
+    const r = this.renderer.info;
     this.infoPanel.innerHTML = `
       <div><b>DEV MODE</b> (F1)</div>
       <div>FPS: ${this.fpsDisplay} · frame: ${(delta * 1000).toFixed(1)}ms</div>
@@ -368,6 +370,8 @@ export class DevMode {
       <div>Sala: ${info.roomLabel}</div>
       <div>Enemigos: ${info.enemyCount} · Proyectiles: ${info.projectileCount} · Partículas: ${info.particleCount}</div>
       <div>God mode: ${this.godMode ? 'ON' : 'off'} (G)</div>
+      <div>Draw calls: ${r.render.calls} · Tris: ${r.render.triangles}</div>
+      <div>Geoms: ${r.memory.geometries} · Texturas: ${r.memory.textures}</div>
     `;
   }
 }

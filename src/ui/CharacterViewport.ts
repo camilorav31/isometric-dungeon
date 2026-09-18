@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import {
   createCharacterMesh,
+  createShieldMesh,
   createWeaponMesh,
   mountWeapon,
   CharacterRig,
   HAND_UPRIGHT_ROTATION,
   PALETTE,
+  stdMat,
 } from '../utils/geometryFactory';
 import { EquipmentSlot, ItemDef, Rarity } from '../state/PlayerState';
 
@@ -63,35 +65,35 @@ export class CharacterViewport {
     if (equipped.offHand) {
       const offHandPivot = new THREE.Group();
       offHandPivot.rotation.x = HAND_UPRIGHT_ROTATION; // counter the arm's rest lean so the shield hangs upright
-      const offHand = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.52, 0.08), new THREE.MeshStandardMaterial({ color: equipped.offHand.color }));
-      offHand.rotation.y = Math.PI / 2; // face sideways (worn on the arm), not toward the camera/front
-      offHandPivot.add(offHand);
+      offHandPivot.add(createShieldMesh(equipped.offHand.color, '#8a8a8a'));
       this.rig.leftForearmMount.add(offHandPivot); // strapped to the forearm, not held at the fingertips
       this.decorations.offHand = offHandPivot;
     }
 
+    // Helmet/armor/boots/cape are still flat-color placeholder boxes (the real
+    // per-slot geometry is future work), but they're now parented at local
+    // (0,0,0) on the rig's named sockets instead of hardcoded absolute Y —
+    // so they stay correctly placed if the base body's proportions change
+    // again, and this is the first real exercise of the socket system.
     if (equipped.helmet) {
-      const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.42), new THREE.MeshStandardMaterial({ color: equipped.helmet.color }));
-      helmet.position.set(0, 1.7, 0);
-      this.rig.group.add(helmet);
+      const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.34), stdMat(equipped.helmet.color));
+      this.rig.headSocket.add(helmet);
       this.decorations.helmet = helmet;
     }
     if (equipped.armor) {
-      const armor = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), new THREE.MeshStandardMaterial({ color: equipped.armor.color }));
-      armor.position.set(0, 1.04, 0);
-      this.rig.group.add(armor);
+      const armor = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.46, 0.4), stdMat(equipped.armor.color));
+      this.rig.torsoSocket.add(armor);
       this.decorations.armor = armor;
     }
     if (equipped.boots) {
-      const boots = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.4), new THREE.MeshStandardMaterial({ color: equipped.boots.color }));
-      boots.position.set(0, 0.11, 0);
-      this.rig.group.add(boots);
+      const boots = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.24, 0.36), stdMat(equipped.boots.color));
+      boots.position.y = 0.12;
+      this.rig.feetSocket.add(boots);
       this.decorations.boots = boots;
     }
     if (equipped.cape) {
-      const cape = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.08), new THREE.MeshStandardMaterial({ color: equipped.cape.color, side: THREE.DoubleSide }));
-      cape.position.set(0, 0.94, -0.24);
-      this.rig.group.add(cape);
+      const cape = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.7, 0.08), stdMat(equipped.cape.color, { side: THREE.DoubleSide }));
+      this.rig.backSocket.add(cape);
       this.decorations.cape = cape;
     }
   }

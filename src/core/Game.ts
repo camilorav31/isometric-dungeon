@@ -69,6 +69,7 @@ export class Game {
 
     this.devMode = new DevMode(
       this.scene,
+      this.renderer,
       uiRoot,
       this.playerState,
       { ambient, fill, moon: moonLight },
