@@ -225,34 +225,157 @@ export function createTelegraphIndicator(): THREE.Mesh {
   return mesh;
 }
 
-export function createCharacterMesh(bodyColor: string, accentColor: string): THREE.Group {
+/** Ground-level facing indicator: a ring around the feet with an arrowhead
+ * pointing local +Z (the character's forward). Replaces relying on body
+ * asymmetry alone to show which way a symmetric low-poly figure is facing. */
+export function createFacingMarker(color: string): THREE.Group {
+  const group = new THREE.Group();
+  const baseMat = { color, emissive: new THREE.Color(color), emissiveIntensity: 0.5, transparent: true, side: THREE.DoubleSide };
+  const ringMat = new THREE.MeshStandardMaterial({ ...baseMat, opacity: 0.42 }); // 0.6 - 30%
+  const arrowMat = new THREE.MeshStandardMaterial({ ...baseMat, opacity: 0.6 });
+
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.54, 20), ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.02;
+  group.add(ring);
+
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.3, 3), arrowMat);
+  arrow.rotation.x = Math.PI / 2;
+  arrow.position.set(0, 0.02, 0.63);
+  group.add(arrow);
+
+  return group;
+}
+
+// ---------- player/enemy character rig ----------
+// Proportions are fractions of a fixed reference height H = 1.80: legs 33.3%,
+// torso 37.8%, neck 2.2%, head 26.7% (see the character-design plan). The arm
+// is a 2-segment chain (upper arm + forearm) hanging from a shoulder pivot at
+// the TOP of the torso, verified by direct kinematics so the hand socket
+// clears the torso's silhouette instead of sitting inside it as it used to.
+const LEG_H = 0.6;
+const TORSO_H = 0.68;
+const NECK_H = 0.04;
+const HEAD_D = 0.48;
+const HEAD_R = HEAD_D / 2;
+
+const TORSO_Y = LEG_H + TORSO_H / 2; // 0.94
+const NECK_Y = LEG_H + TORSO_H + NECK_H / 2; // 1.30
+const HEAD_Y = LEG_H + TORSO_H + NECK_H + HEAD_R; // 1.56
+const SHOULDER_Y = LEG_H + TORSO_H; // 1.28
+const SHOULDER_X = 0.42;
+
+export const UPPER_ARM_LEN = 0.33;
+export const FOREARM_LEN = 0.26;
+/** Upper-arm rest lean (rad, about local X) — a slight forward hang from the shoulder. */
+export const SHOULDER_LEAN = -0.312;
+/** Forearm's local rotation at rest, relative to its shoulder parent — combines with
+ * SHOULDER_LEAN to reach a world lean of ~-43.5° (elbow bend ~25.6°), putting the
+ * hand ~43% up the body and clear of the torso's silhouette. */
+export const ELBOW_BEND_REST = -0.447;
+/** Elbow rotation range during an attack swing — the whole forearm (and whatever is
+ * mounted at the hand) sweeps together, rather than only the weapon pivoting in place. */
+export const ELBOW_SWING_START = ELBOW_BEND_REST - 1.5;
+export const ELBOW_SWING_END = ELBOW_BEND_REST + 1.3;
+/** Weapon's own grip angle at the hand socket, layered on top of the arm's rest pose.
+ * First-pass value — confirmed visually, not purely analytically, since it depends on
+ * Three.js's rotation-composition sign along this hierarchy. */
+export const WEAPON_LOCAL_REST_ROTATION = 1.81;
+/** Cancels the arm chain's accumulated rest lean, so something mounted at a hand
+ * (e.g. a shield) hangs upright instead of tilted along with the arm. */
+export const HAND_UPRIGHT_ROTATION = -(SHOULDER_LEAN + ELBOW_BEND_REST);
+
+/** Lateral clearance (world/character X) of the forearm-mount anchor beyond the
+ * forearm's own centerline — half the forearm's cross-section (0.08) + half the
+ * shield's thickness (0.04) + a small gap (0.02), so a shield strapped there sits
+ * flush against the arm's outer side without clipping through the bone mesh. */
+const FOREARM_MOUNT_LATERAL = 0.14;
+
+export interface CharacterRig {
+  group: THREE.Group;
+  rightShoulder: THREE.Group;
+  rightElbow: THREE.Group;
+  rightHand: THREE.Group;
+  leftHand: THREE.Group;
+  rightForearmMount: THREE.Group;
+  leftForearmMount: THREE.Group;
+}
+
+function buildArm(side: 1 | -1, accentColor: string) {
+  const shoulder = new THREE.Group();
+  shoulder.position.set(SHOULDER_X * side, SHOULDER_Y, 0);
+  shoulder.rotation.x = SHOULDER_LEAN;
+
+  const upperArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, UPPER_ARM_LEN, 0.18), stdMat(accentColor));
+  upperArm.position.y = -UPPER_ARM_LEN / 2;
+  upperArm.castShadow = true;
+  shoulder.add(upperArm);
+
+  const elbow = new THREE.Group();
+  elbow.position.y = -UPPER_ARM_LEN;
+  elbow.rotation.x = ELBOW_BEND_REST;
+  shoulder.add(elbow);
+
+  const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.16, FOREARM_LEN, 0.16), stdMat(accentColor));
+  forearm.position.y = -FOREARM_LEN / 2;
+  forearm.castShadow = true;
+  elbow.add(forearm);
+
+  const hand = new THREE.Group();
+  hand.position.y = -FOREARM_LEN;
+  elbow.add(hand);
+
+  // Anchor for something strapped to the forearm (e.g. a shield) rather than held
+  // at the fingertips: midway along the bone, offset outward off its centerline.
+  const forearmMount = new THREE.Group();
+  forearmMount.position.set(FOREARM_MOUNT_LATERAL * side, -FOREARM_LEN / 2, 0);
+  elbow.add(forearmMount);
+
+  return { shoulder, elbow, hand, forearmMount };
+}
+
+export function createCharacterMesh(bodyColor: string, accentColor: string): CharacterRig {
   const group = new THREE.Group();
 
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.35), stdMat('#2a2320'));
-  legs.position.y = 0.3;
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, LEG_H, 0.35), stdMat('#2a2320'));
+  legs.position.y = LEG_H / 2;
   legs.castShadow = true;
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.7, 0.4), stdMat(bodyColor));
-  torso.position.y = 0.95;
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, TORSO_H, 0.4), stdMat(bodyColor));
+  torso.position.y = TORSO_Y;
   torso.castShadow = true;
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), stdMat('#c9a882'));
-  head.position.y = 1.5;
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.16, NECK_H, 0.16), stdMat('#c9a882'));
+  neck.position.y = NECK_Y;
+  neck.castShadow = true;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R, 8, 8), stdMat('#c9a882'));
+  head.position.y = HEAD_Y;
   head.castShadow = true;
 
-  // Nose/face marker so facing direction is visible on a symmetric placeholder body.
-  const face = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.12), stdMat(accentColor));
-  face.position.set(0, 1.5, 0.3);
-  face.castShadow = true;
+  const right = buildArm(1, accentColor);
+  const left = buildArm(-1, accentColor);
 
-  const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.2), stdMat(accentColor));
-  shoulderL.position.set(-0.42, 0.95, 0);
-  shoulderL.castShadow = true;
-  const shoulderR = shoulderL.clone();
-  shoulderR.position.x = 0.42;
+  group.add(legs, torso, neck, head, right.shoulder, left.shoulder);
+  return {
+    group,
+    rightShoulder: right.shoulder,
+    rightElbow: right.elbow,
+    rightHand: right.hand,
+    leftHand: left.hand,
+    rightForearmMount: right.forearmMount,
+    leftForearmMount: left.forearmMount,
+  };
+}
 
-  group.add(legs, torso, head, face, shoulderL, shoulderR);
-  return group;
+/** Mounts a weapon at a hand anchor with the shared rest grip angle; returns the pivot
+ * so callers can swap the inner mesh (e.g. on re-equip) without rebuilding the joint. */
+export function mountWeapon(hand: THREE.Group, weaponMesh: THREE.Group): THREE.Group {
+  const pivot = new THREE.Group();
+  pivot.rotation.x = WEAPON_LOCAL_REST_ROTATION;
+  pivot.add(weaponMesh);
+  hand.add(pivot);
+  return pivot;
 }
 
 export type WeaponVisual = 'dagger' | 'sword' | 'axe';

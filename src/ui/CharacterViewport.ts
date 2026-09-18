@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import {
   createCharacterMesh,
   createWeaponMesh,
+  mountWeapon,
+  CharacterRig,
+  HAND_UPRIGHT_ROTATION,
   PALETTE,
 } from '../utils/geometryFactory';
 import { EquipmentSlot, ItemDef, Rarity } from '../state/PlayerState';
@@ -24,7 +27,7 @@ export class CharacterViewport {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
-  private characterGroup: THREE.Group;
+  private rig: CharacterRig;
   private decorations: Partial<Record<EquipmentSlot, THREE.Object3D>> = {};
   private rafHandle: number | null = null;
 
@@ -43,75 +46,60 @@ export class CharacterViewport {
     const fill = new THREE.AmbientLight('#8a8a9a', 0.7);
     this.scene.add(key, fill);
 
-    this.characterGroup = createCharacterMesh('#5b6b7a', PALETTE.loot);
-    this.scene.add(this.characterGroup);
+    this.rig = createCharacterMesh('#5b6b7a', PALETTE.loot);
+    this.scene.add(this.rig.group);
   }
 
   updateEquipment(equipped: Partial<Record<EquipmentSlot, ItemDef>>) {
     for (const key of Object.keys(this.decorations) as EquipmentSlot[]) {
-      const obj = this.decorations[key];
-      if (obj) this.characterGroup.remove(obj);
+      this.decorations[key]?.removeFromParent();
       delete this.decorations[key];
     }
 
     const weapon = equipped.mainHand;
     const weaponMesh = createWeaponMesh(weapon?.weaponVisual ?? 'sword', weapon ? BLADE_COLOR_BY_RARITY[weapon.rarity] : BLADE_COLOR_BY_RARITY.common);
-    const weaponPivot = new THREE.Group();
-    weaponPivot.position.set(0.42, 0.95, 0);
-    weaponPivot.rotation.x = -0.4;
-    weaponMesh.position.set(0, -0.3, 0.15);
-    weaponPivot.add(weaponMesh);
-    this.characterGroup.add(weaponPivot);
-    this.decorations.mainHand = weaponPivot;
+    this.decorations.mainHand = mountWeapon(this.rig.rightHand, weaponMesh);
+
+    if (equipped.offHand) {
+      const offHandPivot = new THREE.Group();
+      offHandPivot.rotation.x = HAND_UPRIGHT_ROTATION; // counter the arm's rest lean so the shield hangs upright
+      const offHand = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.52, 0.08), new THREE.MeshStandardMaterial({ color: equipped.offHand.color }));
+      offHand.rotation.y = Math.PI / 2; // face sideways (worn on the arm), not toward the camera/front
+      offHandPivot.add(offHand);
+      this.rig.leftForearmMount.add(offHandPivot); // strapped to the forearm, not held at the fingertips
+      this.decorations.offHand = offHandPivot;
+    }
 
     if (equipped.helmet) {
       const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.42), new THREE.MeshStandardMaterial({ color: equipped.helmet.color }));
-      helmet.position.set(0, 1.68, 0);
-      this.characterGroup.add(helmet);
+      helmet.position.set(0, 1.7, 0);
+      this.rig.group.add(helmet);
       this.decorations.helmet = helmet;
     }
     if (equipped.armor) {
       const armor = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), new THREE.MeshStandardMaterial({ color: equipped.armor.color }));
-      armor.position.set(0, 1.05, 0);
-      this.characterGroup.add(armor);
+      armor.position.set(0, 1.04, 0);
+      this.rig.group.add(armor);
       this.decorations.armor = armor;
     }
     if (equipped.boots) {
       const boots = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.4), new THREE.MeshStandardMaterial({ color: equipped.boots.color }));
       boots.position.set(0, 0.11, 0);
-      this.characterGroup.add(boots);
+      this.rig.group.add(boots);
       this.decorations.boots = boots;
     }
     if (equipped.cape) {
       const cape = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.08), new THREE.MeshStandardMaterial({ color: equipped.cape.color, side: THREE.DoubleSide }));
-      cape.position.set(0, 0.95, -0.24);
-      this.characterGroup.add(cape);
+      cape.position.set(0, 0.94, -0.24);
+      this.rig.group.add(cape);
       this.decorations.cape = cape;
-    }
-    if (equipped.ring) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 6, 10), new THREE.MeshStandardMaterial({ color: equipped.ring.color }));
-      ring.position.set(0.42, 0.68, 0.18);
-      this.characterGroup.add(ring);
-      this.decorations.ring = ring;
-    }
-    if (equipped.jewel) {
-      const jewel = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), new THREE.MeshStandardMaterial({ color: equipped.jewel.color, emissive: new THREE.Color(equipped.jewel.color), emissiveIntensity: 0.4 }));
-      jewel.position.set(0, 1.32, 0.24);
-      this.characterGroup.add(jewel);
-      this.decorations.jewel = jewel;
-    }
-    if (equipped.offHand) {
-      const offHand = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.4, 0.06), new THREE.MeshStandardMaterial({ color: equipped.offHand.color }));
-      offHand.position.set(-0.42, 0.9, 0.12);
-      this.characterGroup.add(offHand);
-      this.decorations.offHand = offHand;
     }
   }
 
   start() {
     this.stop();
     const animate = () => {
-      this.characterGroup.rotation.y += 0.012;
+      this.rig.group.rotation.y += 0.012;
       this.renderer.render(this.scene, this.camera);
       this.rafHandle = requestAnimationFrame(animate);
     };

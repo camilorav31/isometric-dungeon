@@ -61,7 +61,7 @@ export class Enemy extends Entity {
     this.minRange = type === 'ranged' ? RANGED_STATS.minRange : 0;
 
     const bodyColor = type === 'melee' ? PALETTE.danger : type === 'ranged' ? '#5a2d5e' : type === 'tank' ? '#6b3210' : '#4a0d0d';
-    this.group = createCharacterMesh(bodyColor, PALETTE.danger);
+    this.group = createCharacterMesh(bodyColor, PALETTE.danger).group;
     const scale = type === 'boss' ? 1.6 : type === 'tank' ? 1.35 : type === 'melee' ? 1.15 : 0.95;
     this.group.scale.setScalar(scale);
 

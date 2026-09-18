@@ -1,16 +1,23 @@
 import * as THREE from 'three';
 import { Entity } from './Entity';
 import { PlayerState, Rarity } from '../state/PlayerState';
-import { createCharacterMesh, createWeaponMesh, PALETTE } from '../utils/geometryFactory';
+import {
+  createCharacterMesh,
+  createWeaponMesh,
+  createFacingMarker,
+  mountWeapon,
+  CharacterRig,
+  ELBOW_BEND_REST,
+  ELBOW_SWING_START,
+  ELBOW_SWING_END,
+  PALETTE,
+} from '../utils/geometryFactory';
 
 export const PLAYER_ATTACK_RANGE = 2.2;
 export const PLAYER_ATTACK_ANGLE = Math.PI / 2.2; // cone half-angle-ish (used as dot threshold below)
 const ATTACK_COOLDOWN = 0.55;
 const ATTACK_DOT_THRESHOLD = 0.35;
 const ATTACK_ANIM_DURATION = 0.2;
-const SWORD_REST_ROTATION = -0.4;
-const SWORD_SWING_START = -1.9;
-const SWORD_SWING_END = 0.9;
 const INVULN_DURATION = 0.5;
 const INVULN_BLINK_RATE = 16; // blink cycles/sec while invulnerable
 
@@ -41,7 +48,8 @@ export class Player extends Entity {
   speedMultiplier = 1;
   private speedBoostTimer = 0;
   private nextAttackDamageMultiplier = 1;
-  private swordPivot: THREE.Group;
+  private rig: CharacterRig;
+  private weaponPivot: THREE.Group;
   private weaponMesh: THREE.Group;
   private invulnTimer = 0;
   stamina: number;
@@ -52,16 +60,13 @@ export class Player extends Entity {
 
   constructor(public playerState: PlayerState) {
     super(playerState.maxHp, 0.4, 0.3, playerState.speed);
-    this.group = createCharacterMesh('#5b6b7a', PALETTE.loot);
+    this.rig = createCharacterMesh('#5b6b7a', PALETTE.loot);
+    this.group = this.rig.group;
     this.stamina = playerState.maxStamina;
 
-    this.swordPivot = new THREE.Group();
-    this.swordPivot.position.set(0.42, 0.95, 0);
-    this.swordPivot.rotation.x = SWORD_REST_ROTATION;
     this.weaponMesh = createWeaponMesh();
-    this.weaponMesh.position.set(0, -0.3, 0.15);
-    this.swordPivot.add(this.weaponMesh);
-    this.group.add(this.swordPivot);
+    this.weaponPivot = mountWeapon(this.rig.rightHand, this.weaponMesh);
+    this.group.add(createFacingMarker(PALETTE.loot));
 
     this.syncStatsFromState();
   }
@@ -81,13 +86,12 @@ export class Player extends Entity {
 
   /** Rebuilds the held weapon mesh to match the currently equipped weapon (or the bare default). */
   refreshWeaponVisual() {
-    this.swordPivot.remove(this.weaponMesh);
+    this.weaponPivot.remove(this.weaponMesh);
     const weapon = this.playerState.equipped.mainHand;
     const kind = weapon?.weaponVisual ?? 'sword';
     const color = weapon ? BLADE_COLOR_BY_RARITY[weapon.rarity] : BLADE_COLOR_BY_RARITY.common;
     this.weaponMesh = createWeaponMesh(kind, color);
-    this.weaponMesh.position.set(0, -0.3, 0.15);
-    this.swordPivot.add(this.weaponMesh);
+    this.weaponPivot.add(this.weaponMesh);
   }
 
   get effectiveSpeed(): number {
@@ -209,9 +213,9 @@ export class Player extends Entity {
 
     if (this.isAttacking) {
       const progress = 1 - this.attackAnimTimer / ATTACK_ANIM_DURATION;
-      this.swordPivot.rotation.x = THREE.MathUtils.lerp(SWORD_SWING_START, SWORD_SWING_END, progress);
+      this.rig.rightElbow.rotation.x = THREE.MathUtils.lerp(ELBOW_SWING_START, ELBOW_SWING_END, progress);
     } else {
-      this.swordPivot.rotation.x = SWORD_REST_ROTATION;
+      this.rig.rightElbow.rotation.x = ELBOW_BEND_REST;
     }
   }
 
