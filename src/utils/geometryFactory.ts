@@ -386,39 +386,41 @@ export function createFacingMarker(color: string): THREE.Group {
 }
 
 // ---------- player/enemy character rig ----------
-// Proportions are fractions of a fixed reference height H = 1.80 (see the
-// character-quality plan). Part heights sum to ~1.71H, leaving the same small
-// headroom margin above the head the old proportions already had — nothing
-// else in the codebase requires the mesh to touch y=1.80 exactly (the HP-bar
-// anchor in Entity.ts already floats at a fixed +2.05 offset regardless).
-// Head was cut from 26.7%H to 17.2%H and shoulder half-width from 46.7%H total
-// to 30%H total to match the stylized-fantasy reference this iteration
-// targets (a normal-proportioned ~6-7-heads-tall figure, not an oversized-head
-// prototype) — both are zero-triangle-cost changes with an outsized visual
-// payoff. The arm is still a 2-segment chain (upper arm + forearm) hanging
-// from a shoulder pivot at the top of the torso, verified by direct
-// kinematics in the previous iteration; that math is untouched here.
+// Proportions are fractions of a fixed reference height H ≈ 1.80-1.81 (see
+// the character-quality plan, iteration 2). Iteration 1 fixed gross
+// proportions (head/shoulder size) but the torso was still a single tapered
+// cylinder — a smooth taper still reads as "a vertical tube" no matter how
+// it's shaped, and there was no pelvis at all, so the legs ran straight into
+// the torso. This pass adds real STRUCTURE: a distinct pelvis between the
+// legs and waist, and a distinct shoulder "yoke" segment between the chest
+// and the arms, so the body gets genuine width step-changes at each
+// anatomical seam (pelvis→waist narrows, waist→chest widens, chest→yoke
+// flares to the shoulder line) instead of one continuous taper.
 const BOOT_H = 0.22;
-const LEG_H = 0.38;
-const WAIST_H = 0.14;
-const TORSO_H = 0.6;
+const LEG_H = 0.42;
+const PELVIS_H = 0.2;
+const WAIST_H = 0.1;
+const TORSO_H = 0.46;
+const YOKE_H = 0.14;
 const NECK_H = 0.06;
 const HEAD_D = 0.31;
 const HEAD_R = HEAD_D / 2;
 
 const BOOT_Y = BOOT_H / 2;
 const LEG_Y = BOOT_H + LEG_H / 2;
-const WAIST_Y = BOOT_H + LEG_H + WAIST_H / 2;
-const BELT_Y = BOOT_H + LEG_H + WAIST_H;
-const TORSO_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H / 2;
-const NECK_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H + NECK_H / 2;
-const HEAD_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H + NECK_H + HEAD_R;
-const SHOULDER_Y = BOOT_H + LEG_H + WAIST_H + TORSO_H;
-const SHOULDER_X = 0.27;
+const PELVIS_Y = BOOT_H + LEG_H + PELVIS_H / 2;
+const BELT_Y = BOOT_H + LEG_H + PELVIS_H;
+const WAIST_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H / 2;
+const TORSO_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H + TORSO_H / 2;
+const YOKE_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H + TORSO_H + YOKE_H / 2;
+const NECK_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H + TORSO_H + YOKE_H + NECK_H / 2;
+const HEAD_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H + TORSO_H + YOKE_H + NECK_H + HEAD_R;
+const SHOULDER_Y = BOOT_H + LEG_H + PELVIS_H + WAIST_H + TORSO_H + YOKE_H;
+const SHOULDER_X = 0.28;
 /** Half-gap between the two legs' own centerlines — the previous prototype
  * fused both legs into a single box, which read as a pedestal rather than a
  * pair of legs from any camera angle. */
-const LEG_X = 0.13;
+const LEG_X = 0.14;
 
 /** Darkens/lightens a hex color by a linear-space factor — used so parts that
  * don't take their own color parameter (e.g. the waist/hip flare) still
@@ -428,8 +430,8 @@ function shade(hex: string, factor: number): string {
   return `#${new THREE.Color(hex).multiplyScalar(factor).getHexString()}`;
 }
 
-export const UPPER_ARM_LEN = 0.33;
-export const FOREARM_LEN = 0.26;
+export const UPPER_ARM_LEN = 0.3;
+export const FOREARM_LEN = 0.24;
 /** Upper-arm rest lean (rad, about local X) — a slight forward hang from the shoulder. */
 export const SHOULDER_LEAN = -0.312;
 /** Forearm's local rotation at rest, relative to its shoulder parent — combines with
@@ -480,18 +482,23 @@ export interface CharacterRig {
  * more central parts (torso/waist/thigh) use 8 since they're big enough on
  * screen for the extra facets to actually read, and the head uses an
  * icosahedron (no UV-sphere pole pinching at any yaw angle at all). */
-function buildArm(side: 1 | -1, armMat: THREE.MeshStandardMaterial) {
+function buildArm(side: 1 | -1, armMat: THREE.MeshStandardMaterial, skinMat: THREE.MeshStandardMaterial) {
   const shoulder = new THREE.Group();
   shoulder.position.set(SHOULDER_X * side, SHOULDER_Y, 0);
   shoulder.rotation.x = SHOULDER_LEAN;
 
-  const shoulderCapGeo = sharedGeo('shoulder-cap-6', () => new THREE.CylinderGeometry(0.12, 0.15, 0.09, 6));
+  // Sized to nest against the yoke's own rim (0.30 top radius, see
+  // createCharacterMesh) instead of floating as a disc balanced on the arm.
+  const shoulderCapGeo = sharedGeo('shoulder-cap-6', () => new THREE.CylinderGeometry(0.17, 0.14, 0.1, 6));
   const shoulderCap = new THREE.Mesh(shoulderCapGeo, armMat);
-  shoulderCap.position.y = 0.02; // sits right at the joint, slightly overlapping the torso's shoulder line
+  shoulderCap.position.y = 0.01;
   shoulderCap.castShadow = true;
   shoulder.add(shoulderCap);
 
-  const upperArmGeo = sharedGeo('limb-upperArm-6', () => new THREE.CylinderGeometry(0.085, 0.095, UPPER_ARM_LEN, 6));
+  // Noticeably thicker than iteration 1 ("el diámetro debe ser
+  // considerablemente mayor") and tapered upper-arm-thick → wrist-thin across
+  // the whole 2-bone chain, not just within one segment.
+  const upperArmGeo = sharedGeo('limb-upperArm-6', () => new THREE.CylinderGeometry(0.13, 0.115, UPPER_ARM_LEN, 6));
   const upperArm = new THREE.Mesh(upperArmGeo, armMat);
   upperArm.position.y = -UPPER_ARM_LEN / 2;
   upperArm.castShadow = true;
@@ -502,7 +509,7 @@ function buildArm(side: 1 | -1, armMat: THREE.MeshStandardMaterial) {
   elbow.rotation.x = ELBOW_BEND_REST;
   shoulder.add(elbow);
 
-  const forearmGeo = sharedGeo('limb-forearm-6', () => new THREE.CylinderGeometry(0.07, 0.085, FOREARM_LEN, 6));
+  const forearmGeo = sharedGeo('limb-forearm-6', () => new THREE.CylinderGeometry(0.115, 0.09, FOREARM_LEN, 6));
   const forearm = new THREE.Mesh(forearmGeo, armMat);
   forearm.position.y = -FOREARM_LEN / 2;
   forearm.castShadow = true;
@@ -511,6 +518,14 @@ function buildArm(side: 1 | -1, armMat: THREE.MeshStandardMaterial) {
   const hand = new THREE.Group();
   hand.position.y = -FOREARM_LEN;
   elbow.add(hand);
+
+  // A small fist volume so an empty hand (no weapon/shield equipped) still
+  // reads as a hand instead of the limb just stopping in mid-air.
+  const handGeo = sharedGeo('hand-6', () => new THREE.CylinderGeometry(0.075, 0.065, 0.11, 6));
+  const handMesh = new THREE.Mesh(handGeo, skinMat);
+  handMesh.position.y = -0.055;
+  handMesh.castShadow = true;
+  hand.add(handMesh);
 
   // Anchor for something strapped to the forearm (e.g. a shield) rather than held
   // at the fingertips: midway along the bone, offset outward off its centerline.
@@ -536,9 +551,13 @@ export function createCharacterMesh(bodyColor: string, accentColor: string): Cha
   const legMat = stdMat('#2a2320');
   const bootMat = stdMat('#4a3320');
   const darkMat = stdMat('#2b1a0d'); // belt + eyes — same dark leather/shadow tone, one fewer unique material
+  const lowerMat = stdMat(shade(bodyColor, 0.7)); // pelvis + waist — one shared "under-tunic" tone
+  const torsoMat = stdMat(bodyColor); // chest + shoulder yoke — same cloth, continuous across that seam
   const armMat = stdMat(accentColor);
 
-  const legGeo = sharedGeo('leg-6', () => new THREE.CylinderGeometry(0.11, 0.13, LEG_H, 6));
+  // Thigh-wide → ankle-narrow (was accidentally inverted in iteration 1 —
+  // "W_thigh > W_calf > W_ankle" is the whole point of a leg silhouette).
+  const legGeo = sharedGeo('leg-6', () => new THREE.CylinderGeometry(0.15, 0.105, LEG_H, 6));
   const legL = new THREE.Mesh(legGeo, legMat);
   legL.position.set(-LEG_X, LEG_Y, 0);
   legL.castShadow = true;
@@ -546,55 +565,101 @@ export function createCharacterMesh(bodyColor: string, accentColor: string): Cha
   legR.position.set(LEG_X, LEG_Y, 0);
   legR.castShadow = true;
 
+  // Offset forward (+Z, the facing-marker's "forward") instead of centered,
+  // so the foot actually projects ahead of the ankle instead of just being a
+  // symmetric bulge around it.
   const bootGeo = sharedGeo('boot-6', () => new THREE.CylinderGeometry(0.14, 0.12, BOOT_H, 6));
   const bootL = new THREE.Mesh(bootGeo, bootMat);
-  bootL.position.set(-LEG_X, BOOT_Y, 0);
-  bootL.scale.z = 1.2; // feet read longer front-to-back than side-to-side
+  bootL.position.set(-LEG_X, BOOT_Y, 0.04);
+  bootL.scale.z = 1.1;
   bootL.castShadow = true;
   const bootR = new THREE.Mesh(bootGeo, bootMat);
-  bootR.position.set(LEG_X, BOOT_Y, 0);
-  bootR.scale.z = 1.2;
+  bootR.position.set(LEG_X, BOOT_Y, 0.04);
+  bootR.scale.z = 1.1;
   bootR.castShadow = true;
 
-  const waistGeo = sharedGeo('waist-8', () => new THREE.CylinderGeometry(0.21, 0.3, WAIST_H, 8));
-  const waist = new THREE.Mesh(waistGeo, stdMat(shade(bodyColor, 0.7)));
+  // Pelvis: a real mass between the legs and the waist (iteration 1 had the
+  // legs run straight into a single hip-flare piece with no pelvis at all).
+  // Widest low-body volume — the two legs emerge from underneath it, and the
+  // waist above it pinches in, so the pelvis→waist seam reads as a visible
+  // step rather than a continuous taper.
+  const pelvisGeo = sharedGeo('pelvis-8', () => new THREE.CylinderGeometry(0.21, 0.17, PELVIS_H, 8));
+  const pelvis = new THREE.Mesh(pelvisGeo, lowerMat);
+  pelvis.position.y = PELVIS_Y;
+  pelvis.scale.z = 0.85;
+  pelvis.castShadow = true;
+
+  const beltGeo = sharedGeo('belt-8', () => new THREE.CylinderGeometry(0.205, 0.205, 0.06, 8));
+  const belt = new THREE.Mesh(beltGeo, darkMat);
+  belt.position.y = BELT_Y;
+  belt.scale.z = 0.85;
+  belt.castShadow = true;
+
+  // Waist: deliberately narrower than both the pelvis below and the chest
+  // above (a cinch, not a midpoint average) so both seams show a step.
+  const waistGeo = sharedGeo('waist-8', () => new THREE.CylinderGeometry(0.2, 0.195, WAIST_H, 8));
+  const waist = new THREE.Mesh(waistGeo, lowerMat);
   waist.position.y = WAIST_Y;
   waist.scale.z = 0.8;
   waist.castShadow = true;
 
-  const beltGeo = sharedGeo('belt-8', () => new THREE.CylinderGeometry(0.225, 0.225, 0.06, 8));
-  const belt = new THREE.Mesh(beltGeo, darkMat);
-  belt.position.y = BELT_Y - 0.02;
-  belt.scale.z = 0.85;
-  belt.castShadow = true;
-
-  const torsoGeo = sharedGeo('torso-8', () => new THREE.CylinderGeometry(0.27, 0.21, TORSO_H, 8));
-  const torso = new THREE.Mesh(torsoGeo, stdMat(bodyColor));
+  // Chest: wider than the waist below it (a visible step out), tapering up
+  // toward the shoulder yoke rather than the yoke's job alone.
+  const torsoGeo = sharedGeo('torso-chest-8', () => new THREE.CylinderGeometry(0.25, 0.22, TORSO_H, 8));
+  const torso = new THREE.Mesh(torsoGeo, torsoMat);
   torso.position.y = TORSO_Y;
   torso.scale.z = 0.75; // oval cross-section: chest reads wider than deep
   torso.castShadow = true;
+
+  // Shoulder yoke: the torso->shoulder transition the reference needs and
+  // iteration 1 didn't have — without this, the shoulder caps read as discs
+  // balanced on top of the arms instead of a continuation of the torso mass.
+  const yokeGeo = sharedGeo('shoulder-yoke-8', () => new THREE.CylinderGeometry(0.3, 0.25, YOKE_H, 8));
+  const yoke = new THREE.Mesh(yokeGeo, torsoMat);
+  yoke.position.y = YOKE_Y;
+  yoke.scale.z = 0.8;
+  yoke.castShadow = true;
 
   const neckGeo = sharedGeo('neck-6', () => new THREE.CylinderGeometry(0.09, 0.1, NECK_H, 6));
   const neck = new THREE.Mesh(neckGeo, skinMat);
   neck.position.y = NECK_Y;
   neck.castShadow = true;
 
-  const headGeo = sharedGeo('head-ico1', () => new THREE.IcosahedronGeometry(HEAD_R, 1));
+  // Low-poly humanoid head: a lathed profile (8 sides around, per the "8
+  // lados" ask) instead of a sphere/icosahedron — a solid of revolution lets
+  // the jaw/cheek/brow/forehead/crown each get their own radius, so the head
+  // has real vertical structure instead of being uniformly round at every
+  // height. Points run chin (near-point) -> jaw -> cheek -> brow (widest) ->
+  // forehead -> crown (near-point).
+  const headGeo = sharedGeo('head-lathe-8', () => {
+    const r = HEAD_R;
+    const pts = [
+      new THREE.Vector2(0.06 * r, -1.0 * r),
+      new THREE.Vector2(0.62 * r, -0.72 * r),
+      new THREE.Vector2(0.82 * r, -0.32 * r),
+      new THREE.Vector2(0.96 * r, 0.05 * r),
+      new THREE.Vector2(0.74 * r, 0.45 * r),
+      new THREE.Vector2(0.42 * r, 0.8 * r),
+      new THREE.Vector2(0.03 * r, 1.0 * r),
+    ];
+    return new THREE.LatheGeometry(pts, 8);
+  });
   const head = new THREE.Mesh(headGeo, skinMat);
   head.position.y = HEAD_Y;
+  head.scale.z = 0.92; // slightly flatter front-to-back than cheek-to-cheek
   head.castShadow = true;
 
   const eyeGeo = sharedGeo('eye', () => new THREE.BoxGeometry(0.045, 0.035, 0.02));
   const eyeL = new THREE.Mesh(eyeGeo, darkMat);
-  eyeL.position.set(-0.06, 0.01, HEAD_R * 0.92);
+  eyeL.position.set(-0.06, 0.05 * HEAD_R, HEAD_R * 0.88);
   const eyeR = new THREE.Mesh(eyeGeo, darkMat);
-  eyeR.position.set(0.06, 0.01, HEAD_R * 0.92);
+  eyeR.position.set(0.06, 0.05 * HEAD_R, HEAD_R * 0.88);
   head.add(eyeL, eyeR);
 
-  const right = buildArm(1, armMat);
-  const left = buildArm(-1, armMat);
+  const right = buildArm(1, armMat, skinMat);
+  const left = buildArm(-1, armMat, skinMat);
 
-  group.add(legL, legR, bootL, bootR, waist, belt, torso, neck, head, right.shoulder, left.shoulder);
+  group.add(legL, legR, bootL, bootR, pelvis, belt, waist, torso, yoke, neck, head, right.shoulder, left.shoulder);
 
   const headSocket = new THREE.Group();
   headSocket.position.y = HEAD_Y;
