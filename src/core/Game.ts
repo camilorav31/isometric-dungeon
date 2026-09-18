@@ -67,7 +67,13 @@ export class Game {
       () => this.descendToNextFloor(),
     );
 
-    this.devMode = new DevMode(this.scene, uiRoot);
+    this.devMode = new DevMode(
+      this.scene,
+      uiRoot,
+      this.playerState,
+      () => this.devReturnToLobby(),
+      () => this.player.syncStatsFromState(),
+    );
 
     window.addEventListener('resize', this.onResize);
 
@@ -128,6 +134,13 @@ export class Game {
       this.enterLobby();
       this.paused = false;
     }, 2200);
+  }
+
+  private devReturnToLobby() {
+    if (this.mode === 'DUNGEON') {
+      this.dungeon.dispose();
+    }
+    this.enterLobby();
   }
 
   private animate = () => {

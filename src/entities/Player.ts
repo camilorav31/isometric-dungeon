@@ -26,8 +26,11 @@ const ROLL_TILT = -0.5;
 // the blade itself should look: plain steel for commons, a glowing tint above that.
 const BLADE_COLOR_BY_RARITY: Record<Rarity, string> = {
   common: '#c9c9c9',
-  rare: '#5aa8e8',
-  unique: '#e8c468',
+  rare: '#6fd67f',
+  unique: '#5aa8e8',
+  magical: '#b57fe0',
+  mythic: '#f2dd6e',
+  legendary: '#ffab4d',
 };
 
 export class Player extends Entity {

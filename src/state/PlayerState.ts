@@ -8,15 +8,25 @@ export type EquipmentSlot =
   | 'mainHand'
   | 'offHand';
 
-export type Rarity = 'common' | 'rare' | 'unique';
+export type Rarity = 'common' | 'rare' | 'unique' | 'magical' | 'mythic' | 'legendary';
 export type WeaponVisual = 'dagger' | 'sword' | 'axe';
 
-export const RARITY_ORDER: Rarity[] = ['unique', 'rare', 'common'];
-export const RARITY_LABEL: Record<Rarity, string> = { common: 'Común', rare: 'Raro', unique: 'Único' };
+export const RARITY_ORDER: Rarity[] = ['legendary', 'mythic', 'magical', 'unique', 'rare', 'common'];
+export const RARITY_LABEL: Record<Rarity, string> = {
+  common: 'Común',
+  rare: 'Raro',
+  unique: 'Único',
+  magical: 'Mágico',
+  mythic: 'Mítico',
+  legendary: 'Legendario',
+};
 export const RARITY_COLOR: Record<Rarity, string> = {
-  common: '#9a9284',
-  rare: '#4f8fc4',
-  unique: '#d1a237',
+  common: '#9a9284',        // gris
+  rare: '#2d8a2d',          // verde
+  unique: '#4f8fc4',        // azul
+  magical: '#9b5ec4',       // morado
+  mythic: '#ffd700',        // amarillo
+  legendary: '#ff8c00',     // naranja
 };
 
 /** Rarer runes cool down faster. */
@@ -24,6 +34,9 @@ export const RARITY_COOLDOWN_MULT: Record<Rarity, number> = {
   common: 1,
   rare: 0.85,
   unique: 0.7,
+  magical: 0.6,
+  mythic: 0.5,
+  legendary: 0.4,
 };
 
 export interface ItemDef {
@@ -121,7 +134,7 @@ function makeRune(skill: SkillDef, rarity: Rarity): RuneDef {
 
 type LootTemplate = Omit<ItemDef, 'id' | 'rarity'>;
 
-const LOOT_TABLE: Record<Rarity, LootTemplate[]> = {
+export const LOOT_TABLE: Record<Rarity, LootTemplate[]> = {
   common: [
     { name: 'Daga Oxidada', slot: 'mainHand', damageBonus: 3, color: '#8b2020', weaponVisual: 'dagger' },
     { name: 'Espada Mellada', slot: 'mainHand', damageBonus: 4, color: '#8b2020', weaponVisual: 'sword' },
@@ -155,12 +168,48 @@ const LOOT_TABLE: Record<Rarity, LootTemplate[]> = {
     { name: 'Corazón de Brasa', slot: 'ring', speedBonus: 1.5, hpBonus: 18, color: '#2d6b3d' },
     { name: 'Joya del Abismo', slot: 'jewel', damageBonus: 10, hpBonus: 10, color: '#6b2d5f' },
   ],
+  magical: [
+    { name: 'Daga Arcana', slot: 'mainHand', damageBonus: 20, color: '#8b2020', weaponVisual: 'dagger' },
+    { name: 'Espada Mística', slot: 'mainHand', damageBonus: 22, color: '#8b2020', weaponVisual: 'sword' },
+    { name: 'Escudo Hechizado', slot: 'offHand', hpBonus: 40, damageBonus: 3, color: '#5a4a3a' },
+    { name: 'Yelmo de Hechizo', slot: 'helmet', hpBonus: 42, speedBonus: 0.5, color: '#4a4a4a' },
+    { name: 'Armadura Encantada', slot: 'armor', hpBonus: 60, damageBonus: 5, color: '#4a4a4a' },
+    { name: 'Botas del Hechicero', slot: 'boots', speedBonus: 2.0, color: '#3a2f28' },
+    { name: 'Capa de Magia', slot: 'cape', hpBonus: 36, damageBonus: 5, color: '#2d2d45' },
+    { name: 'Anillo Mágico', slot: 'ring', speedBonus: 1.8, hpBonus: 20, color: '#2d6b3d' },
+    { name: 'Joya de Poder', slot: 'jewel', damageBonus: 15, hpBonus: 15, color: '#6b2d5f' },
+  ],
+  mythic: [
+    { name: 'Hacha Mítica', slot: 'mainHand', damageBonus: 28, color: '#8b2020', weaponVisual: 'axe' },
+    { name: 'Espada de los Dioses', slot: 'mainHand', damageBonus: 30, color: '#8b2020', weaponVisual: 'sword' },
+    { name: 'Escudo del Titán', slot: 'offHand', hpBonus: 55, damageBonus: 6, color: '#5a4a3a' },
+    { name: 'Corona Mítica', slot: 'helmet', hpBonus: 52, damageBonus: 4, color: '#4a4a4a' },
+    { name: 'Armadura Mítica', slot: 'armor', hpBonus: 80, damageBonus: 8, color: '#4a4a4a' },
+    { name: 'Botas de Centella', slot: 'boots', speedBonus: 2.5, damageBonus: 3, color: '#3a2f28' },
+    { name: 'Capa de los Reyes', slot: 'cape', hpBonus: 48, damageBonus: 7, color: '#2d2d45' },
+    { name: 'Joya Mítica', slot: 'ring', speedBonus: 2.2, hpBonus: 28, damageBonus: 4, color: '#2d6b3d' },
+    { name: 'Gema del Destino', slot: 'jewel', damageBonus: 22, hpBonus: 18, color: '#6b2d5f' },
+  ],
+  legendary: [
+    { name: 'Espada de la Perdición', slot: 'mainHand', damageBonus: 40, color: '#8b2020', weaponVisual: 'sword' },
+    { name: 'Hacha de la Aniquilación', slot: 'mainHand', damageBonus: 42, color: '#8b2020', weaponVisual: 'axe' },
+    { name: 'Escudo de la Inmortalidad', slot: 'offHand', hpBonus: 75, damageBonus: 10, color: '#5a4a3a' },
+    { name: 'Corona de la Eternidad', slot: 'helmet', hpBonus: 68, damageBonus: 8, color: '#4a4a4a' },
+    { name: 'Armadura Legendaria', slot: 'armor', hpBonus: 110, damageBonus: 12, color: '#4a4a4a' },
+    { name: 'Botas del Rayo', slot: 'boots', speedBonus: 3.0, damageBonus: 6, color: '#3a2f28' },
+    { name: 'Capa del Fenix', slot: 'cape', hpBonus: 62, damageBonus: 10, speedBonus: 0.5, color: '#2d2d45' },
+    { name: 'Anillo Legendario', slot: 'ring', speedBonus: 2.8, hpBonus: 40, damageBonus: 8, color: '#2d6b3d' },
+    { name: 'Gema Suprema', slot: 'jewel', damageBonus: 35, hpBonus: 30, speedBonus: 0.8, color: '#6b2d5f' },
+  ],
 };
 
 const RARITY_WEIGHTS: Array<{ rarity: Rarity; weight: number }> = [
-  { rarity: 'common', weight: 60 },
-  { rarity: 'rare', weight: 30 },
-  { rarity: 'unique', weight: 10 },
+  { rarity: 'common', weight: 50 },
+  { rarity: 'rare', weight: 25 },
+  { rarity: 'unique', weight: 15 },
+  { rarity: 'magical', weight: 6 },
+  { rarity: 'mythic', weight: 3 },
+  { rarity: 'legendary', weight: 1 },
 ];
 
 function rollRarity(): Rarity {
