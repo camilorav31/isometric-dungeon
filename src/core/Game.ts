@@ -36,7 +36,7 @@ export class Game {
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = createRenderer(canvas);
     this.scene = createScene();
-    const { moonLight } = addLighting(this.scene);
+    const { ambient, fill, moonLight } = addLighting(this.scene);
     this.moonLight = moonLight;
 
     this.camera = new CameraController(window.innerWidth / window.innerHeight);
@@ -71,6 +71,7 @@ export class Game {
       this.scene,
       uiRoot,
       this.playerState,
+      { ambient, fill, moon: moonLight },
       () => this.devReturnToLobby(),
       () => {
         this.player.syncStatsFromState();

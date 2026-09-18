@@ -38,5 +38,5 @@ export function addLighting(scene: THREE.Scene) {
   scene.add(moonLight);
   scene.add(moonLight.target);
 
-  return { ambient, moonLight };
+  return { ambient, fill, moonLight };
 }
