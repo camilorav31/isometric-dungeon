@@ -99,6 +99,7 @@ export function openCharacterPanel(ui: UIManager, state: PlayerState, player: Pl
   };
 
   const open = () => {
+    ui.setPanelRefreshHandler(open);
     ui.showPanel(
       'Personaje',
       render(),
@@ -109,6 +110,7 @@ export function openCharacterPanel(ui: UIManager, state: PlayerState, player: Pl
       (panelEl) => {
         const canvas = panelEl.querySelector<HTMLCanvasElement>('#char-viewport');
         if (canvas) {
+          viewport?.dispose();
           viewport = new CharacterViewport(canvas);
           viewport.updateEquipment(state.equipped);
           viewport.start();

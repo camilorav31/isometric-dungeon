@@ -72,7 +72,10 @@ export class Game {
       uiRoot,
       this.playerState,
       () => this.devReturnToLobby(),
-      () => this.player.syncStatsFromState(),
+      () => {
+        this.player.syncStatsFromState();
+        this.ui.refreshOpenPanel();
+      },
     );
 
     window.addEventListener('resize', this.onResize);

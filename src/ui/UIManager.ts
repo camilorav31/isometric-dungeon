@@ -33,6 +33,7 @@ export class UIManager {
   private soulsDisplay: HTMLDivElement;
   private toastTimeout: number | undefined;
   private bannerTimeout: number | undefined;
+  private panelRefresh: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -310,6 +311,18 @@ export class UIManager {
   hidePanel() {
     this.panelOverlay.classList.add('hidden');
     this.panelOverlay.innerHTML = '';
+    this.panelRefresh = null;
+  }
+
+  /** Lets the currently open panel register how to re-render itself, so external
+   * state changes (e.g. DEV mode equipping gear) can refresh it in place. */
+  setPanelRefreshHandler(fn: (() => void) | null) {
+    this.panelRefresh = fn;
+  }
+
+  /** Re-renders the open panel in place, if any panel is open and registered a refresh handler. */
+  refreshOpenPanel() {
+    if (!this.panelOverlay.classList.contains('hidden')) this.panelRefresh?.();
   }
 
   // ---------- messages / toast / banner ----------
