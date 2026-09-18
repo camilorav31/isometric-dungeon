@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AABB } from '../utils/collision';
+import { B, CHUNK_SIZE } from '../blocks/BlockGrid';
 import {
   PlayerState,
   Rarity,
@@ -45,6 +46,7 @@ export class DevMode {
 
   private overlayGroup: THREE.Group;
   private gridHelper: THREE.GridHelper;
+  private chunkGridHelper: THREE.GridHelper;
   private infoPanel: HTMLDivElement;
   private devPanel: HTMLDivElement;
   private fpsAccum = 0;
@@ -62,10 +64,42 @@ export class DevMode {
     this.overlayGroup.visible = false;
     this.scene.add(this.overlayGroup);
 
-    this.gridHelper = new THREE.GridHelper(200, 200, 0x5a8fd6, 0x2a3a4a);
-    this.gridHelper.position.y = 0.02;
+    // Fine grid: one line per block cell (B). Bold grid: one line per chunk
+    // (CHUNK_SIZE blocks) — both derived from the block system's own
+    // constants instead of a hardcoded size, so they can't drift out of
+    // sync with it.
+    const span = CHUNK_SIZE * B * 12; // a round number of whole chunks across
+    // Sits above the tallest tile a floor can raise to (tile height + wobble +
+    // dais raise, see createStoneTileFloor) — a tiled floor is solid boxes,
+    // not a paper-thin plane, so a grid at the old y=0.02 would render buried
+    // inside it instead of visibly on top.
+    const GRID_Y = 0.3;
+    // A cell with integer coordinate `x` is a block CENTERED at world x (see
+    // BlockGrid.ts / createStoneTileFloor), so its edges sit at x±B/2 — i.e.
+    // at half-integers, not at the integers a THREE.GridHelper centered on
+    // the origin draws lines at by default. Without this offset every grid
+    // line cuts through the middle of a tile instead of running along its
+    // border, which is the "doesn't match the blocks" mismatch. Shifting the
+    // whole grid by -B/2 on both axes moves its lines from cell CENTERS to
+    // cell EDGES. Chunk boundaries are `floor(x/CHUNK_SIZE)`, so a chunk edge
+    // is also at a cell edge (e.g. cell 0's left edge, -0.5) — the same
+    // -B/2 shift lines up the bold chunk grid too, since CHUNK_SIZE*B is a
+    // whole multiple of B and the shift is invariant mod B.
+    const CELL_COLOR = 0x39ff14; // vivid green — per-block cell grid
+    const CHUNK_COLOR = 0x0d1b6e; // dark royal blue — per-chunk grid
+    this.gridHelper = new THREE.GridHelper(span, span / B, CELL_COLOR, CELL_COLOR);
+    this.gridHelper.position.set(-B / 2, GRID_Y, -B / 2);
+    (this.gridHelper.material as THREE.Material).opacity = 0.6;
+    (this.gridHelper.material as THREE.Material).transparent = true;
     this.gridHelper.visible = false;
     this.scene.add(this.gridHelper);
+
+    this.chunkGridHelper = new THREE.GridHelper(span, span / (CHUNK_SIZE * B), CHUNK_COLOR, CHUNK_COLOR);
+    (this.chunkGridHelper.material as THREE.Material).opacity = 0.85;
+    (this.chunkGridHelper.material as THREE.Material).transparent = true;
+    this.chunkGridHelper.position.set(-B / 2, GRID_Y + 0.01, -B / 2);
+    this.chunkGridHelper.visible = false;
+    this.scene.add(this.chunkGridHelper);
 
     this.infoPanel = document.createElement('div');
     this.infoPanel.className = 'dev-info-panel';
@@ -127,6 +161,7 @@ export class DevMode {
     this.enabled = !this.enabled;
     this.overlayGroup.visible = this.enabled;
     this.gridHelper.visible = this.enabled;
+    this.chunkGridHelper.visible = this.enabled;
     this.infoPanel.style.display = this.enabled ? 'block' : 'none';
     this.devPanel.style.display = this.enabled ? 'block' : 'none';
   }
@@ -148,7 +183,7 @@ export class DevMode {
     if (!this.enabled) return;
 
     this.clearOverlay();
-    for (const aabb of info.walls) this.overlayGroup.add(boxLine(aabb, 0xff5555));
+    for (const aabb of info.walls) this.overlayGroup.add(boxLine(aabb, 0xff0000)); // vivid red — wall/border bounds
     for (const aabb of info.rooms) this.overlayGroup.add(boxLine(aabb, 0x4f8fc4, 0.05));
     for (const aabb of info.enemies) this.overlayGroup.add(boxLine(aabb, 0xffaa33));
     for (const aabb of info.traps) this.overlayGroup.add(boxLine(aabb, 0xaa44ff));

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { B } from '../blocks/BlockGrid';
 
 export const PALETTE = {
   stoneLight: '#4a4a4a',
@@ -18,6 +19,129 @@ export function createFloor(width: number, depth: number, color = PALETTE.stoneD
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.receiveShadow = true;
+  return mesh;
+}
+
+export interface TileFloorRaise {
+  /** World-space center of a raised platform (e.g. a dais before an altar/portal). */
+  x: number;
+  z: number;
+  radius: number;
+  height: number;
+}
+
+export interface TileFloorOptions {
+  /** Tiles span -halfExtent..halfExtent on both axes, in whole blocks. */
+  halfExtent: number;
+  colors: string[];
+  /** Max +/- random per-tile height jitter — worn-flagstone unevenness, kept
+   * small since nothing in this game follows floor height vertically (no
+   * jump/step-up), so a big jitter would look like the character clipping. */
+  wobble?: number;
+  raise?: TileFloorRaise;
+}
+
+/**
+ * One flat, single-block-tall tile per cell (each exactly B wide) instead of
+ * one big plane — this is the block grid (see blocks/BlockGrid.ts) made
+ * visible, with per-tile color variation and a small height offset for a
+ * worn stone-floor look. Built as one InstancedMesh (one draw call for the
+ * whole floor) since a 20-something-cell room is hundreds of instances.
+ */
+export function createStoneTileFloor(opts: TileFloorOptions): THREE.InstancedMesh {
+  const { halfExtent, colors, wobble = 0, raise } = opts;
+  const tileHeight = 0.12;
+  const span = halfExtent * 2 + 1;
+  const count = span * span;
+
+  const geometry = new THREE.BoxGeometry(B, tileHeight, B);
+  const material = stdMat('#ffffff', { roughness: 0.95, metalness: 0.03 });
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  let i = 0;
+  for (let ix = -halfExtent; ix <= halfExtent; ix++) {
+    for (let iz = -halfExtent; iz <= halfExtent; iz++) {
+      const x = ix * B;
+      const z = iz * B;
+      let y = tileHeight / 2 + (Math.random() * 2 - 1) * wobble;
+      if (raise && Math.hypot(x - raise.x, z - raise.z) < raise.radius) y += raise.height;
+      dummy.position.set(x, y, z);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      color.set(colors[Math.floor(Math.random() * colors.length)]);
+      mesh.setColorAt(i, color);
+      i++;
+    }
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  return mesh;
+}
+
+const WALL_BLOCK_GROOVE = 0.05; // gap between adjacent stone blocks — a masonry seam, not a real material texture
+
+export interface BlockWallOptions {
+  /** Total wall length along its run, in world units — a whole number of blocks. */
+  length: number;
+  /** Total wall height, in world units — a whole number of blocks. */
+  height: number;
+  /** Wall thickness (front-to-back), in world units — usually B. */
+  thickness: number;
+  /** World axis the wall's length runs along. */
+  axis: 'x' | 'z';
+  colors: string[];
+  fadeable?: boolean;
+}
+
+/**
+ * One block-sized stone per cell (each exactly B wide/tall) instead of one flat
+ * box — the wall built from the same per-cell grid the floor already uses (see
+ * createStoneTileFloor), so "the wall" and "the block grid" are the same thing
+ * instead of two disconnected representations. Per-block color variation plus
+ * a small groove between blocks stands in for a real stone texture map (this
+ * project has no texture-loading pipeline; every other surface "textures"
+ * itself the same procedural way). One InstancedMesh per wall run.
+ */
+export function createStoneBlockWall(opts: BlockWallOptions): THREE.InstancedMesh {
+  const { length, height, thickness, axis, colors, fadeable = false } = opts;
+  const cols = Math.round(length / B);
+  const rows = Math.round(height / B);
+  const count = cols * rows;
+
+  const faceSize = B - WALL_BLOCK_GROOVE;
+  const sizeX = axis === 'x' ? faceSize : thickness;
+  const sizeZ = axis === 'z' ? faceSize : thickness;
+  const geometry = new THREE.BoxGeometry(sizeX, faceSize, sizeZ);
+  const material = stdMat('#ffffff', { roughness: 0.95, metalness: 0.03 });
+  if (fadeable) {
+    material.transparent = true;
+    material.depthWrite = false;
+  }
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  let i = 0;
+  for (let col = 0; col < cols; col++) {
+    const along = (col - (cols - 1) / 2) * B;
+    for (let row = 0; row < rows; row++) {
+      const y = row * B + B / 2;
+      dummy.position.set(axis === 'x' ? along : 0, y, axis === 'z' ? along : 0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      color.set(colors[Math.floor(Math.random() * colors.length)]);
+      mesh.setColorAt(i, color);
+      i++;
+    }
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   return mesh;
 }
 

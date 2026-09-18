@@ -4,7 +4,7 @@ import { CameraController } from '../core/CameraController';
 import { InputManager } from '../core/InputManager';
 import { UIManager } from '../ui/UIManager';
 import { AABB, makeAABB, attemptMove } from '../utils/collision';
-import { createChest, createFloor, createPortal, createTable, createTorch, createWallSegment, PALETTE } from '../utils/geometryFactory';
+import { createChest, createPillar, createPortal, createStoneBlockWall, createStoneTileFloor, createTable, createTorch, PALETTE } from '../utils/geometryFactory';
 import { openBankPanel, openCharacterPanel, openUpgradesPanel } from '../ui/panels';
 import { PlayerState } from '../state/PlayerState';
 import { Direction } from '../dungeon/DungeonGenerator';
@@ -14,6 +14,16 @@ import { updateTorchFlicker } from '../scene/torchFlicker';
 const ROOM_HALF = 11;
 const WALL_HEIGHT = 4;
 const WALL_THICKNESS = 1;
+
+// Castle great-hall palette — warmer, more varied flagstone tones for the
+// floor (worn stone, not a flat dungeon slab) and a cooler cut-stone gray
+// for walls/pillars, distinct from the dungeon proper's rougher dark stone.
+const FLOOR_TILE_COLORS = ['#5c574e', '#4f4a42', '#665f54', '#453f37', '#59544a', '#4a453d'];
+const WALL_STONE_COLORS = ['#5b5e63', '#4f5257', '#666a70', '#454850', '#5f6268', '#585b60'];
+const PILLAR_POSITIONS: [number, number][] = [
+  [-3, -4],
+  [3, -4],
+];
 
 export class LobbyController {
   private group: THREE.Group | null = null;
@@ -40,7 +50,12 @@ export class LobbyController {
     const group = new THREE.Group();
     this.wallAABBs = [];
 
-    const floor = createFloor(ROOM_HALF * 2 + 1, ROOM_HALF * 2 + 1, PALETTE.stoneDark);
+    const floor = createStoneTileFloor({
+      halfExtent: ROOM_HALF,
+      colors: FLOOR_TILE_COLORS,
+      wobble: 0.02,
+      raise: { x: this.portalPos.x, z: this.portalPos.z, radius: 3.5, height: 0.1 },
+    });
     group.add(floor);
 
     const wallDefs: Array<[Direction, number, number, number, number]> = [
@@ -52,11 +67,26 @@ export class LobbyController {
     ];
     this.wallMeshesByDir = {};
     for (const [dir, x, z, w, d] of wallDefs) {
-      const wall = createWallSegment(w, WALL_HEIGHT, d, PALETTE.stoneLight, true);
-      wall.position.set(x, WALL_HEIGHT / 2, z);
+      const axis: 'x' | 'z' = dir === 'N' || dir === 'S' ? 'x' : 'z';
+      const wall = createStoneBlockWall({
+        length: axis === 'x' ? w : d,
+        height: WALL_HEIGHT,
+        thickness: axis === 'x' ? d : w,
+        axis,
+        colors: WALL_STONE_COLORS,
+        fadeable: true,
+      });
+      wall.position.set(x, 0, z);
       group.add(wall);
       this.wallAABBs.push(makeAABB(x, z, w / 2, d / 2));
       this.wallMeshesByDir[dir] = [wall];
+    }
+
+    for (const [px, pz] of PILLAR_POSITIONS) {
+      const pillar = createPillar(WALL_HEIGHT);
+      pillar.position.set(px, 0, pz);
+      group.add(pillar);
+      this.wallAABBs.push(makeAABB(px, pz, 0.65, 0.65));
     }
 
     const chest = createChest();
